@@ -1,6 +1,6 @@
 #pragma once
 
-#include "opencv2/core/ocl.hpp"
+#include <opencv2/objdetect.hpp>
 
 namespace cv
 {
@@ -218,8 +218,6 @@ protected:
     Ptr<MaskGenerator> maskGenerator;
     UMat ugrayImage;
     UMat ufacepos, ustages, unodes, uleaves, usubsets;
-    ocl::Kernel haarKernel, lbpKernel;
-    bool tryOpenCL;
 
     Mutex mtx;
 };

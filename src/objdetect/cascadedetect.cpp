@@ -44,7 +44,6 @@
 
 #include "cascadedetect.hpp"
 #include "opencv2/objdetect/objdetect_c.h"
-#include "opencl_kernels_objdetect.hpp"
 
 namespace cv
 {
@@ -592,17 +591,6 @@ bool HaarEvaluator::read(const FileNode& node, Size _origWinSize)
     normrect = Rect(1, 1, origWinSize.width - 2, origWinSize.height - 2);
 
     localSize = lbufSize = Size(0, 0);
-    if (ocl::haveOpenCL())
-    {
-        if (ocl::Device::getDefault().isAMD() || ocl::Device::getDefault().isIntel())
-        {
-            localSize = Size(8, 8);
-            lbufSize = Size(origWinSize.width + localSize.width,
-                            origWinSize.height + localSize.height);
-            if (lbufSize.area() > 1024)
-                lbufSize = Size(0, 0);
-        }
-    }
 
     return true;
 }
@@ -781,8 +769,6 @@ bool LBPEvaluator::read( const FileNode& node, Size _origWinSize )
     }
     nchannels = 1;
     localSize = lbufSize = Size(0, 0);
-    if (ocl::haveOpenCL())
-        localSize = Size(8, 8);
 
     return true;
 }
@@ -1040,138 +1026,6 @@ public:
 struct getRect { Rect operator ()(const CvAvgComp& e) const { return e.rect; } };
 struct getNeighbors { int operator ()(const CvAvgComp& e) const { return e.neighbors; } };
 
-
-bool CascadeClassifierImpl::ocl_detectMultiScaleNoGrouping( const std::vector<float>& scales,
-                                                            std::vector<Rect>& candidates )
-{
-    int featureType = getFeatureType();
-    std::vector<UMat> bufs;
-    featureEvaluator->getUMats(bufs);
-    Size localsz = featureEvaluator->getLocalSize();
-    if( localsz.area() == 0 )
-        return false;
-    Size lbufSize = featureEvaluator->getLocalBufSize();
-    size_t localsize[] = { localsz.width, localsz.height };
-    const int grp_per_CU = 12;
-    size_t globalsize[] = { grp_per_CU*ocl::Device::getDefault().maxComputeUnits()*localsize[0], localsize[1] };
-    bool ok = false;
-
-    ufacepos.create(1, MAX_FACES*3+1, CV_32S);
-    UMat ufacepos_count(ufacepos, Rect(0, 0, 1, 1));
-    ufacepos_count.setTo(Scalar::all(0));
-
-    if( ustages.empty() )
-    {
-        copyVectorToUMat(data.stages, ustages);
-        if (!data.stumps.empty())
-            copyVectorToUMat(data.stumps, unodes);
-        else
-            copyVectorToUMat(data.nodes, unodes);
-        copyVectorToUMat(data.leaves, uleaves);
-        if( !data.subsets.empty() )
-            copyVectorToUMat(data.subsets, usubsets);
-    }
-
-    int nstages = (int)data.stages.size();
-    int splitstage_ocl = 1;
-
-    if( featureType == FeatureEvaluator::HAAR )
-    {
-        Ptr<HaarEvaluator> haar = featureEvaluator.dynamicCast<HaarEvaluator>();
-        if( haar.empty() )
-            return false;
-
-        if( haarKernel.empty() )
-        {
-            String opts;
-            if (lbufSize.area())
-                opts = format("-D LOCAL_SIZE_X=%d -D LOCAL_SIZE_Y=%d -D SUM_BUF_SIZE=%d -D SUM_BUF_STEP=%d -D NODE_COUNT=%d -D SPLIT_STAGE=%d -D N_STAGES=%d -D MAX_FACES=%d -D HAAR",
-                              localsz.width, localsz.height, lbufSize.area(), lbufSize.width, data.maxNodesPerTree, splitstage_ocl, nstages, MAX_FACES);
-            else
-                opts = format("-D LOCAL_SIZE_X=%d -D LOCAL_SIZE_Y=%d -D NODE_COUNT=%d -D SPLIT_STAGE=%d -D N_STAGES=%d -D MAX_FACES=%d -D HAAR",
-                              localsz.width, localsz.height, data.maxNodesPerTree, splitstage_ocl, nstages, MAX_FACES);
-            haarKernel.create("runHaarClassifier", ocl::objdetect::cascadedetect_oclsrc, opts);
-            if( haarKernel.empty() )
-                return false;
-        }
-
-        Rect normrect = haar->getNormRect();
-        int sqofs = haar->getSquaresOffset();
-
-        haarKernel.args((int)scales.size(),
-                        ocl::KernelArg::PtrReadOnly(bufs[0]), // scaleData
-                        ocl::KernelArg::ReadOnlyNoSize(bufs[1]), // sum
-                        ocl::KernelArg::PtrReadOnly(bufs[2]), // optfeatures
-
-                        // cascade classifier
-                        ocl::KernelArg::PtrReadOnly(ustages),
-                        ocl::KernelArg::PtrReadOnly(unodes),
-                        ocl::KernelArg::PtrReadOnly(uleaves),
-
-                        ocl::KernelArg::PtrWriteOnly(ufacepos), // positions
-                        normrect, sqofs, data.origWinSize);
-        ok = haarKernel.run(2, globalsize, localsize, true);
-    }
-    else if( featureType == FeatureEvaluator::LBP )
-    {
-        if (data.maxNodesPerTree > 1)
-            return false;
-
-        Ptr<LBPEvaluator> lbp = featureEvaluator.dynamicCast<LBPEvaluator>();
-        if( lbp.empty() )
-            return false;
-
-        if( lbpKernel.empty() )
-        {
-            String opts;
-            if (lbufSize.area())
-                opts = format("-D LOCAL_SIZE_X=%d -D LOCAL_SIZE_Y=%d -D SUM_BUF_SIZE=%d -D SUM_BUF_STEP=%d -D SPLIT_STAGE=%d -D N_STAGES=%d -D MAX_FACES=%d -D LBP",
-                              localsz.width, localsz.height, lbufSize.area(), lbufSize.width, splitstage_ocl, nstages, MAX_FACES);
-            else
-                opts = format("-D LOCAL_SIZE_X=%d -D LOCAL_SIZE_Y=%d -D SPLIT_STAGE=%d -D N_STAGES=%d -D MAX_FACES=%d -D LBP",
-                              localsz.width, localsz.height, splitstage_ocl, nstages, MAX_FACES);
-            lbpKernel.create("runLBPClassifierStumpSimple", ocl::objdetect::cascadedetect_oclsrc, opts);
-            if( lbpKernel.empty() )
-                return false;
-        }
-
-        int subsetSize = (data.ncategories + 31)/32;
-        lbpKernel.args((int)scales.size(),
-                       ocl::KernelArg::PtrReadOnly(bufs[0]), // scaleData
-                       ocl::KernelArg::ReadOnlyNoSize(bufs[1]), // sum
-                       ocl::KernelArg::PtrReadOnly(bufs[2]), // optfeatures
-
-                       // cascade classifier
-                       ocl::KernelArg::PtrReadOnly(ustages),
-                       ocl::KernelArg::PtrReadOnly(unodes),
-                       ocl::KernelArg::PtrReadOnly(usubsets),
-                       subsetSize,
-
-                       ocl::KernelArg::PtrWriteOnly(ufacepos), // positions
-                       data.origWinSize);
-
-        ok = lbpKernel.run(2, globalsize, localsize, true);
-    }
-
-    if( ok )
-    {
-        Mat facepos = ufacepos.getMat(ACCESS_READ);
-        const int* fptr = facepos.ptr<int>();
-        int nfaces = fptr[0];
-        nfaces = std::min(nfaces, (int)MAX_FACES);
-
-        for( int i = 0; i < nfaces; i++ )
-        {
-            const FeatureEvaluator::ScaleData& s = featureEvaluator->getScaleData(fptr[i*3 + 1]);
-            candidates.push_back(Rect(cvRound(fptr[i*3 + 2]*s.scale),
-                                      cvRound(fptr[i*3 + 3]*s.scale),
-                                      cvRound(data.origWinSize.width*s.scale),
-                                      cvRound(data.origWinSize.height*s.scale)));
-        }
-    }
-    return ok;
-}
-
 bool CascadeClassifierImpl::isOldFormatCascade() const
 {
     return !oldCascade.empty();
@@ -1228,27 +1082,6 @@ void CascadeClassifierImpl::detectMultiScaleNoGrouping( InputArray _image, std::
     if( maxObjectSize.height == 0 || maxObjectSize.width == 0 )
         maxObjectSize = imgsz;
 
-#ifdef HAVE_OPENCL
-    bool use_ocl = tryOpenCL && ocl::useOpenCL() &&
-         featureEvaluator->getLocalSize().area() > 0 &&
-         ocl::Device::getDefault().type() != ocl::Device::TYPE_CPU &&
-         (data.minNodesPerTree == data.maxNodesPerTree) &&
-         !isOldFormatCascade() &&
-         maskGenerator.empty() &&
-         !outputRejectLevels;
-#endif
-
-    /*if( use_ocl )
-    {
-        if (_image.channels() > 1)
-            cvtColor(_image, ugrayImage, COLOR_BGR2GRAY);
-        else if (_image.isUMat())
-            ugrayImage = _image.getUMat();
-        else
-            _image.copyTo(ugrayImage);
-        gray = ugrayImage;
-    }
-    else*/
     {
         if (_image.channels() > 1)
             cvtColor(_image, grayImage, COLOR_BGR2GRAY);
@@ -1277,11 +1110,6 @@ void CascadeClassifierImpl::detectMultiScaleNoGrouping( InputArray _image, std::
 
     if( scales.size() == 0 || !featureEvaluator->setImage(gray, scales) )
         return;
-
-    // OpenCL code
-    CV_OCL_RUN(use_ocl, ocl_detectMultiScaleNoGrouping( scales, candidates ))
-
-    tryOpenCL = false;
 
     // CPU code
     featureEvaluator->getMats();
@@ -1527,9 +1355,6 @@ bool CascadeClassifierImpl::Data::read(const FileNode &root)
 
 bool CascadeClassifierImpl::read_(const FileNode& root)
 {
-    tryOpenCL = true;
-    haarKernel = ocl::Kernel();
-    lbpKernel = ocl::Kernel();
     ustages.release();
     unodes.release();
     uleaves.release();

@@ -49,14 +49,16 @@
 #include "opencv2/ml.hpp"
 
 #include "opencv2/core/utility.hpp"
-#include "opencv2/core/ocl.hpp"
 
 #include "opencv2/opencv_modules.hpp"
 #ifdef HAVE_OPENCV_HIGHGUI
 #  include "opencv2/highgui.hpp"
 #endif
 
-#include "opencv2/core/private.hpp"
+
+// Apparently they check and generate an error if these headers are used outside of building OpenCV itself
+// We don't need any of the private functionality so we can leave it out
+// #include "opencv2/core/private.hpp"
 
 #ifdef HAVE_TEGRA_OPTIMIZATION
 #include "opencv2/objdetect/objdetect_tegra.hpp"
