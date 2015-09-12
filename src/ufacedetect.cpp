@@ -3,13 +3,13 @@
 #include "opencv2/videoio.hpp"
 #include "opencv2/highgui.hpp"
 #include "opencv2/imgproc.hpp"
-#include "opencv2/core/utility.hpp"
-#include "opencv2/core/ocl.hpp"
 
 #include <cctype>
 #include <iostream>
 #include <iterator>
 #include <stdio.h>
+
+#include "VisualCascade.hpp"
 
 using namespace std;
 using namespace cv;
@@ -23,7 +23,7 @@ static void help()
             "\tUsing OpenCV version " << CV_VERSION << "\n" << endl;
 }
 
-void detectAndDraw( UMat& img, Mat& canvas, CascadeClassifier& cascade, double scale );
+void detectAndDraw( UMat& img, Mat& canvas, VisualCascade& cascade, double scale );
 
 string cascadeName = "../../data/haarcascades/haarcascade_frontalface_alt.xml";
 
@@ -38,7 +38,7 @@ int main( int argc, const char** argv )
     size_t cascadeOptLen = cascadeOpt.length();
     String inputName;
 
-    CascadeClassifier cascade;
+    VisualCascade cascade;
     double scale = 1;
 
     for( int i = 1; i < argc; i++ )
@@ -69,8 +69,6 @@ int main( int argc, const char** argv )
         return -1;
     }
 
-    cout << "old cascade: " << (cascade.isOldFormatCascade() ? "TRUE" : "FALSE") << endl;
-
     image = imread( inputName, 1 ).getUMat(ACCESS_READ);
     if( image.empty() )
     {
@@ -91,10 +89,10 @@ int main( int argc, const char** argv )
     return 0;
 }
 
-void detectAndDraw( UMat& img, Mat& canvas, CascadeClassifier& cascade, double scale0 )
+void detectAndDraw( UMat& img, Mat& canvas, VisualCascade& cascade, double scale0 )
 {
     int i = 0;
-    double t = 0, scale=1;
+    double scale=1;
     vector<Rect> faces, faces2;
     const static Scalar colors[] =
     {
@@ -109,8 +107,6 @@ void detectAndDraw( UMat& img, Mat& canvas, CascadeClassifier& cascade, double s
     };
     static UMat gray, smallImg;
 
-    t = (double)getTickCount();
-
     resize( img, smallImg, Size(), scale0, scale0, INTER_LINEAR );
     cvtColor( smallImg, gray, COLOR_BGR2GRAY );
     equalizeHist( gray, gray );
@@ -122,11 +118,7 @@ void detectAndDraw( UMat& img, Mat& canvas, CascadeClassifier& cascade, double s
         |CASCADE_SCALE_IMAGE
         ,
         Size(30, 30) );
-    t = (double)getTickCount() - t;
     smallImg.copyTo(canvas);
-
-    putText(canvas, format("OpenCL: %s", ocl::useOpenCL() ? "ON" : "OFF"), Point(50, 30),
-            FONT_HERSHEY_SIMPLEX, 0.8, Scalar(0,255,0), 2);
 
     for( vector<Rect>::const_iterator r = faces.begin(); r != faces.end(); r++, i++ )
     {
