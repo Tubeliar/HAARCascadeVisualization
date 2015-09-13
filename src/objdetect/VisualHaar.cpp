@@ -943,7 +943,25 @@ viscasHaarDetectObjectsForROC( const CvArr* _img,
         CvSize winSize0 = cascade->orig_window_size;
         imgSmall.reset(cvCreateMat( img->rows + 1, img->cols + 1, CV_8UC1 ));
 
-        for( factor = 1; ; factor *= scaleFactor )
+		// First increase the factor until we find the one past the biggest one
+		for (factor = 1; ; factor *= scaleFactor)
+		{
+			CvSize winSize(cvRound(winSize0.width*factor),
+				cvRound(winSize0.height*factor));
+			CvSize sz(cvRound(img->cols / factor), cvRound(img->rows / factor));
+			CvSize sz1(sz.width - winSize0.width + 1, sz.height - winSize0.height + 1);
+
+			if (sz1.width <= 0 || sz1.height <= 0)
+				break;
+			if (winSize.width > maxSize.width || winSize.height > maxSize.height)
+				break;
+			if (winSize.width < minSize.width || winSize.height < minSize.height)
+				continue;
+		}
+
+		// Reduce the factor once to get the biggest valid factor
+		// Keep reducing untill we are back at 1
+        for(factor /= scaleFactor; factor >= 1; factor /= scaleFactor )
         {
             CvSize winSize(cvRound(winSize0.width*factor),
                                 cvRound(winSize0.height*factor));
