@@ -50,11 +50,13 @@ void VisualCascade::detectMultiScale(InputArray _image, std::vector<Rect>& objec
 	}
 }
 
-void VisualCascade::show(int x, int y, Size windowSize)
+void VisualCascade::show(int x, int y, Size windowSize, Size ssz)
 {
 	Mat result;
 	mProgress.copyTo(result);
-	rectangle(result, Rect(Point(x, y), windowSize), Scalar(0, 0, 255));
+	int xOffset = (mProgress.cols - windowSize.width)  * x / ssz.width;
+	int yOffset = (mProgress.rows - windowSize.height) * y / ssz.height;
+	rectangle(result, Rect(Point(xOffset, yOffset), windowSize), Scalar(0, 0, 255));
 	imshow("Cascade Visualiser", result);
 	waitKey(1);
 }

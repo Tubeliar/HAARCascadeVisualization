@@ -13,7 +13,7 @@ public:
 		cv::Size minSize = cv::Size(),
 		cv::Size maxSize = cv::Size());
 
-	void show(int x, int y, cv::Size windowSize);
+	void show(int x, int y, cv::Size windowSize, cv::Size ssz);
 
 protected:
 	cv::Mat mOriginal;
