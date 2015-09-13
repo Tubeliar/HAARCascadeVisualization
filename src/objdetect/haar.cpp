@@ -46,6 +46,13 @@
 #include "opencv2/objdetect/objdetect_c.h"
 #include <stdio.h>
 
+// Copy one function from private.hpp
+static inline void* cvAlignPtr(const void* ptr, int align = 32)
+{
+	CV_DbgAssert((align & (align - 1)) == 0);
+	return (void*)(((size_t)ptr + align - 1) & ~(size_t)(align - 1));
+}
+
 #if CV_SSE2
 #   if 1 /*!CV_SSE4_1 && !CV_SSE4_2*/
 #       define _mm_blendv_pd(a, b, m) _mm_xor_pd(a, _mm_and_pd(_mm_xor_pd(b, a), m))
@@ -1314,95 +1321,40 @@ public:
         Size ssz(sum1.cols - 1 - winSize0.width, y2 - y1);
         int x, y, ystep = factor > 2 ? 1 : 2;
 
-#ifdef HAVE_IPP
-        if(CV_IPP_CHECK_COND && cascade->hid_cascade->ipp_stages )
-        {
-            IppiRect iequRect = {equRect.x, equRect.y, equRect.width, equRect.height};
-            ippiRectStdDev_32f_C1R(sum1.ptr<float>(y1), (int)sum1.step,
-                                   sqsum1.ptr<double>(y1), (int)sqsum1.step,
-                                   norm1->ptr<float>(y1), (int)norm1->step,
-                                   ippiSize(ssz.width, ssz.height), iequRect );
-
-            int positive = (ssz.width/ystep)*((ssz.height + ystep-1)/ystep);
-
-            if( ystep == 1 )
-                (*mask1) = Scalar::all(1);
-            else
-                for( y = y1; y < y2; y++ )
-                {
-                    uchar* mask1row = mask1->ptr(y);
-                    memset( mask1row, 0, ssz.width );
-
-                    if( y % ystep == 0 )
-                        for( x = 0; x < ssz.width; x += ystep )
-                            mask1row[x] = (uchar)1;
-                }
-
-            for( int j = 0; j < cascade->count; j++ )
-            {
-                if( ippiApplyHaarClassifier_32f_C1R(
-                            sum1.ptr<float>(y1), (int)sum1.step,
-                            norm1->ptr<float>(y1), (int)norm1->step,
-                            mask1->ptr<uchar>(y1), (int)mask1->step,
-                            ippiSize(ssz.width, ssz.height), &positive,
-                            cascade->hid_cascade->stage_classifier[j].threshold,
-                            (IppiHaarClassifier_32f*)cascade->hid_cascade->ipp_stages[j]) < 0 )
-                    positive = 0;
-                if( positive <= 0 )
-                    break;
-            }
-            CV_IMPL_ADD(CV_IMPL_IPP|CV_IMPL_MT);
-
-            if( positive > 0 )
-                for( y = y1; y < y2; y += ystep )
-                {
-                    uchar* mask1row = mask1->ptr(y);
-                    for( x = 0; x < ssz.width; x += ystep )
-                        if( mask1row[x] != 0 )
-                        {
-                            mtx->lock();
-                            vec->push_back(Rect(cvRound(x*factor), cvRound(y*factor),
-                                                winSize.width, winSize.height));
-                            mtx->unlock();
-                            if( --positive == 0 )
-                                break;
-                        }
-                    if( positive == 0 )
-                        break;
-                }
-        }
-        else
-#endif // IPP
-            for( y = y1; y < y2; y += ystep )
-                for( x = 0; x < ssz.width; x += ystep )
-                {
-                    double gypWeight;
-                    int result = cvRunHaarClassifierCascadeSum( cascade, cvPoint(x,y), gypWeight, 0 );
-                    if( rejectLevels )
-                    {
-                        if( result == 1 )
-                            result = -1*cascade->count;
-                        if( cascade->count + result < 4 )
-                        {
-                            mtx->lock();
-                            vec->push_back(Rect(cvRound(x*factor), cvRound(y*factor),
-                                           winSize.width, winSize.height));
-                            rejectLevels->push_back(-result);
-                            levelWeights->push_back(gypWeight);
-                            mtx->unlock();
-                        }
-                    }
-                    else
-                    {
-                        if( result > 0 )
-                        {
-                            mtx->lock();
-                            vec->push_back(Rect(cvRound(x*factor), cvRound(y*factor),
-                                           winSize.width, winSize.height));
-                            mtx->unlock();
-                        }
-                    }
-                }
+		for (y = y1; y < y2; y += ystep)
+		{
+			for (x = 0; x < ssz.width; x += ystep)
+			{
+				std::cout << ".";
+				double gypWeight;
+				int result = cvRunHaarClassifierCascadeSum(cascade, cvPoint(x, y), gypWeight, 0);
+				if (rejectLevels)
+				{
+					if (result == 1)
+						result = -1 * cascade->count;
+					if (cascade->count + result < 4)
+					{
+						mtx->lock();
+						vec->push_back(Rect(cvRound(x*factor), cvRound(y*factor),
+							winSize.width, winSize.height));
+						rejectLevels->push_back(-result);
+						levelWeights->push_back(gypWeight);
+						mtx->unlock();
+					}
+				}
+				else
+				{
+					if (result > 0)
+					{
+						mtx->lock();
+						vec->push_back(Rect(cvRound(x*factor), cvRound(y*factor),
+							winSize.width, winSize.height));
+						mtx->unlock();
+					}
+				}
+			}
+			std::cout << std::endl;
+		}
     }
 
     const CvHaarClassifierCascade* cascade;
@@ -1618,13 +1570,14 @@ cvHaarDetectObjectsForROC( const CvArr* _img,
             else
 #endif
                 cvSetImagesForHaarClassifierCascade( cascade, &sum1, &sqsum1, _tilted, 1. );
-
+			std::cout << "detecting at size " << sz.width << "X" << sz.height << std::endl;
             cv::Mat _norm1 = cv::cvarrToMat(&norm1), _mask1 = cv::cvarrToMat(&mask1);
-            cv::parallel_for_(cv::Range(0, stripCount),
+			cv::HaarDetectObjects_ScaleImage_Invoker invoker =
                          cv::HaarDetectObjects_ScaleImage_Invoker(cascade,
                                 (((sz1.height + stripCount - 1)/stripCount + ystep-1)/ystep)*ystep,
                                 factor, cv::cvarrToMat(&sum1), cv::cvarrToMat(&sqsum1), &_norm1, &_mask1,
-                                cv::Rect(equRect), allCandidates, rejectLevels, levelWeights, outputRejectLevels, &mtx));
+                                cv::Rect(equRect), allCandidates, rejectLevels, levelWeights, outputRejectLevels, &mtx);
+			invoker(cv::Range(0, stripCount));
         }
     }
     else
