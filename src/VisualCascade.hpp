@@ -12,6 +12,12 @@ public:
 		int minNeighbors = 3, int flags = 0,
 		cv::Size minSize = cv::Size(),
 		cv::Size maxSize = cv::Size());
+
+	void show(int x, int y, cv::Size windowSize);
+
+protected:
+	cv::Mat mOriginal;
+	cv::Mat mProgress;
 };
 
 #endif

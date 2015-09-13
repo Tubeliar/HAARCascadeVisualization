@@ -45,6 +45,7 @@
 #include "opencv2/imgproc/imgproc_c.h"
 #include "opencv2/objdetect/objdetect_c.h"
 #include <stdio.h>
+#include "../VisualCascade.hpp"
 
 // Copy one function from private.hpp
 static inline void* cvAlignPtr(const void* ptr, int align = 32)
@@ -60,16 +61,9 @@ static inline void* cvAlignPtr(const void* ptr, int align = 32)
 #   endif
 #endif
 
-#if 0 /*CV_AVX*/
-#  define CV_HAAR_USE_AVX 1
-#  if defined _MSC_VER
-#    pragma warning( disable : 4752 )
-#  endif
-#else
 #  if CV_SSE2
 #    define CV_HAAR_USE_SSE 1
 #  endif
-#endif
 
 /* these settings affect the quality of detection: change with care */
 #define CV_ADJUST_FEATURES 1
@@ -343,63 +337,6 @@ icvCreateHidHaarClassifierCascade( CvHaarClassifierCascade* cascade )
             out->isStumpBased &= node_count == 1;
         }
     }
-/*
-#ifdef HAVE_IPP
-    int can_use_ipp = CV_IPP_CHECK_COND && (!out->has_tilted_features && !out->is_tree && out->isStumpBased);
-
-    if( can_use_ipp )
-    {
-        int ipp_datasize = cascade->count*sizeof(out->ipp_stages[0]);
-        float ipp_weight_scale=(float)(1./((orig_window_size.width-icv_object_win_border*2)*
-            (orig_window_size.height-icv_object_win_border*2)));
-
-        out->ipp_stages = (void**)cvAlloc( ipp_datasize );
-        memset( out->ipp_stages, 0, ipp_datasize );
-
-        ipp_features = (CvRect*)cvAlloc( max_count*3*sizeof(ipp_features[0]) );
-        ipp_weights = (float*)cvAlloc( max_count*3*sizeof(ipp_weights[0]) );
-        ipp_thresholds = (float*)cvAlloc( max_count*sizeof(ipp_thresholds[0]) );
-        ipp_val1 = (float*)cvAlloc( max_count*sizeof(ipp_val1[0]) );
-        ipp_val2 = (float*)cvAlloc( max_count*sizeof(ipp_val2[0]) );
-        ipp_counts = (int*)cvAlloc( max_count*sizeof(ipp_counts[0]) );
-
-        for( i = 0; i < cascade->count; i++ )
-        {
-            CvHaarStageClassifier* stage_classifier = cascade->stage_classifier + i;
-            for( j = 0, k = 0; j < stage_classifier->count; j++ )
-            {
-                CvHaarClassifier* classifier = stage_classifier->classifier + j;
-                int rect_count = 2 + (classifier->haar_feature->rect[2].r.width != 0);
-
-                ipp_thresholds[j] = classifier->threshold[0];
-                ipp_val1[j] = classifier->alpha[0];
-                ipp_val2[j] = classifier->alpha[1];
-                ipp_counts[j] = rect_count;
-
-                for( l = 0; l < rect_count; l++, k++ )
-                {
-                    ipp_features[k] = classifier->haar_feature->rect[l].r;
-                    //ipp_features[k].y = orig_window_size.height - ipp_features[k].y - ipp_features[k].height;
-                    ipp_weights[k] = classifier->haar_feature->rect[l].weight*ipp_weight_scale;
-                }
-            }
-
-            if( ippiHaarClassifierInitAlloc_32f( (IppiHaarClassifier_32f**)&out->ipp_stages[i],
-                (const IppiRect*)ipp_features, ipp_weights, ipp_thresholds,
-                ipp_val1, ipp_val2, ipp_counts, stage_classifier->count ) < 0 )
-                break;
-        }
-
-        if( i < cascade->count )
-        {
-            for( j = 0; j < i; j++ )
-                if( out->ipp_stages[i] )
-                    ippiHaarClassifierFree_32f( (IppiHaarClassifier_32f*)out->ipp_stages[i] );
-            cvFree( &out->ipp_stages );
-        }
-    }
-#endif
-*/
     cascade->hid_cascade = out;
     assert( (char*)haar_node_ptr - (char*)out <= datasize );
 
@@ -428,7 +365,7 @@ icvCreateHidHaarClassifierCascade( CvHaarClassifierCascade* cascade )
 
 
 CV_IMPL void
-cvSetImagesForHaarClassifierCascade( CvHaarClassifierCascade* _cascade,
+viscasSetImagesForHaarClassifierCascade( CvHaarClassifierCascade* _cascade,
                                      const CvArr* _sum,
                                      const CvArr* _sqsum,
                                      const CvArr* _tilted_sum,
@@ -642,165 +579,12 @@ cvSetImagesForHaarClassifierCascade( CvHaarClassifierCascade* _cascade,
     }
 }
 
-
-// AVX version icvEvalHidHaarClassifier.  Process 8 CvHidHaarClassifiers per call. Check AVX support before invocation!!
-#ifdef CV_HAAR_USE_AVX
-CV_INLINE
-double icvEvalHidHaarClassifierAVX( CvHidHaarClassifier* classifier,
-                                    double variance_norm_factor, size_t p_offset )
-{
-    int  CV_DECL_ALIGNED(32) idxV[8] = {0,0,0,0,0,0,0,0};
-    uchar flags[8] = {0,0,0,0,0,0,0,0};
-    CvHidHaarTreeNode* nodes[8];
-    double res = 0;
-    uchar exitConditionFlag = 0;
-    for(;;)
-    {
-        float CV_DECL_ALIGNED(32) tmp[8] = {0,0,0,0,0,0,0,0};
-        nodes[0] = (classifier+0)->node + idxV[0];
-        nodes[1] = (classifier+1)->node + idxV[1];
-        nodes[2] = (classifier+2)->node + idxV[2];
-        nodes[3] = (classifier+3)->node + idxV[3];
-        nodes[4] = (classifier+4)->node + idxV[4];
-        nodes[5] = (classifier+5)->node + idxV[5];
-        nodes[6] = (classifier+6)->node + idxV[6];
-        nodes[7] = (classifier+7)->node + idxV[7];
-
-        __m256 t = _mm256_set1_ps(static_cast<float>(variance_norm_factor));
-
-        t = _mm256_mul_ps(t, _mm256_set_ps(nodes[7]->threshold,
-                                           nodes[6]->threshold,
-                                           nodes[5]->threshold,
-                                           nodes[4]->threshold,
-                                           nodes[3]->threshold,
-                                           nodes[2]->threshold,
-                                           nodes[1]->threshold,
-                                           nodes[0]->threshold));
-
-        __m256 offset = _mm256_set_ps(calc_sumf(nodes[7]->feature.rect[0], p_offset),
-                                      calc_sumf(nodes[6]->feature.rect[0], p_offset),
-                                      calc_sumf(nodes[5]->feature.rect[0], p_offset),
-                                      calc_sumf(nodes[4]->feature.rect[0], p_offset),
-                                      calc_sumf(nodes[3]->feature.rect[0], p_offset),
-                                      calc_sumf(nodes[2]->feature.rect[0], p_offset),
-                                      calc_sumf(nodes[1]->feature.rect[0], p_offset),
-                                      calc_sumf(nodes[0]->feature.rect[0], p_offset));
-
-        __m256 weight = _mm256_set_ps(nodes[7]->feature.rect[0].weight,
-                                      nodes[6]->feature.rect[0].weight,
-                                      nodes[5]->feature.rect[0].weight,
-                                      nodes[4]->feature.rect[0].weight,
-                                      nodes[3]->feature.rect[0].weight,
-                                      nodes[2]->feature.rect[0].weight,
-                                      nodes[1]->feature.rect[0].weight,
-                                      nodes[0]->feature.rect[0].weight);
-
-        __m256 sum = _mm256_mul_ps(offset, weight);
-
-        offset = _mm256_set_ps(calc_sumf(nodes[7]->feature.rect[1], p_offset),
-                               calc_sumf(nodes[6]->feature.rect[1], p_offset),
-                               calc_sumf(nodes[5]->feature.rect[1], p_offset),
-                               calc_sumf(nodes[4]->feature.rect[1], p_offset),
-                               calc_sumf(nodes[3]->feature.rect[1], p_offset),
-                               calc_sumf(nodes[2]->feature.rect[1], p_offset),
-                               calc_sumf(nodes[1]->feature.rect[1], p_offset),
-                               calc_sumf(nodes[0]->feature.rect[1], p_offset));
-
-        weight = _mm256_set_ps(nodes[7]->feature.rect[1].weight,
-                               nodes[6]->feature.rect[1].weight,
-                               nodes[5]->feature.rect[1].weight,
-                               nodes[4]->feature.rect[1].weight,
-                               nodes[3]->feature.rect[1].weight,
-                               nodes[2]->feature.rect[1].weight,
-                               nodes[1]->feature.rect[1].weight,
-                               nodes[0]->feature.rect[1].weight);
-
-        sum = _mm256_add_ps(sum, _mm256_mul_ps(offset, weight));
-
-        if( nodes[0]->feature.rect[2].p0 )
-            tmp[0] = calc_sumf(nodes[0]->feature.rect[2], p_offset) * nodes[0]->feature.rect[2].weight;
-        if( nodes[1]->feature.rect[2].p0 )
-            tmp[1] = calc_sumf(nodes[1]->feature.rect[2], p_offset) * nodes[1]->feature.rect[2].weight;
-        if( nodes[2]->feature.rect[2].p0 )
-            tmp[2] = calc_sumf(nodes[2]->feature.rect[2], p_offset) * nodes[2]->feature.rect[2].weight;
-        if( nodes[3]->feature.rect[2].p0 )
-            tmp[3] = calc_sumf(nodes[3]->feature.rect[2], p_offset) * nodes[3]->feature.rect[2].weight;
-        if( nodes[4]->feature.rect[2].p0 )
-            tmp[4] = calc_sumf(nodes[4]->feature.rect[2], p_offset) * nodes[4]->feature.rect[2].weight;
-        if( nodes[5]->feature.rect[2].p0 )
-            tmp[5] = calc_sumf(nodes[5]->feature.rect[2], p_offset) * nodes[5]->feature.rect[2].weight;
-        if( nodes[6]->feature.rect[2].p0 )
-            tmp[6] = calc_sumf(nodes[6]->feature.rect[2], p_offset) * nodes[6]->feature.rect[2].weight;
-        if( nodes[7]->feature.rect[2].p0 )
-            tmp[7] = calc_sumf(nodes[7]->feature.rect[2], p_offset) * nodes[7]->feature.rect[2].weight;
-
-        sum = _mm256_add_ps(sum,_mm256_load_ps(tmp));
-
-        __m256 left  = _mm256_set_ps(static_cast<float>(nodes[7]->left), static_cast<float>(nodes[6]->left),
-                                     static_cast<float>(nodes[5]->left), static_cast<float>(nodes[4]->left),
-                                     static_cast<float>(nodes[3]->left), static_cast<float>(nodes[2]->left),
-                                     static_cast<float>(nodes[1]->left), static_cast<float>(nodes[0]->left));
-        __m256 right = _mm256_set_ps(static_cast<float>(nodes[7]->right),static_cast<float>(nodes[6]->right),
-                                     static_cast<float>(nodes[5]->right),static_cast<float>(nodes[4]->right),
-                                     static_cast<float>(nodes[3]->right),static_cast<float>(nodes[2]->right),
-                                     static_cast<float>(nodes[1]->right),static_cast<float>(nodes[0]->right));
-
-        _mm256_store_si256((__m256i*)idxV, _mm256_cvttps_epi32(_mm256_blendv_ps(right, left, _mm256_cmp_ps(sum, t, _CMP_LT_OQ))));
-
-        for(int i = 0; i < 8; i++)
-        {
-            if(idxV[i]<=0)
-            {
-                if(!flags[i])
-                {
-                    exitConditionFlag++;
-                    flags[i] = 1;
-                    res += (classifier+i)->alpha[-idxV[i]];
-                }
-                idxV[i]=0;
-            }
-        }
-        if(exitConditionFlag == 8)
-            return res;
-    }
-}
-#endif //CV_HAAR_USE_AVX
-
 CV_INLINE
 double icvEvalHidHaarClassifier( CvHidHaarClassifier* classifier,
                                  double variance_norm_factor,
                                  size_t p_offset )
 {
     int idx = 0;
-    /*#if CV_HAAR_USE_SSE && !CV_HAAR_USE_AVX
-        if(cv::checkHardwareSupport(CV_CPU_SSE2))//based on old SSE variant. Works slow
-        {
-            double CV_DECL_ALIGNED(16) temp[2];
-            __m128d zero = _mm_setzero_pd();
-            do
-            {
-                CvHidHaarTreeNode* node = classifier->node + idx;
-                __m128d t = _mm_set1_pd((node->threshold)*variance_norm_factor);
-                __m128d left = _mm_set1_pd(node->left);
-                __m128d right = _mm_set1_pd(node->right);
-
-                double _sum = calc_sum(node->feature.rect[0],p_offset) * node->feature.rect[0].weight;
-                _sum += calc_sum(node->feature.rect[1],p_offset) * node->feature.rect[1].weight;
-                if( node->feature.rect[2].p0 )
-                    _sum += calc_sum(node->feature.rect[2],p_offset) * node->feature.rect[2].weight;
-
-                __m128d sum = _mm_set1_pd(_sum);
-                t = _mm_cmplt_sd(sum, t);
-                sum = _mm_blendv_pd(right, left, t);
-
-                _mm_store_pd(temp, sum);
-                idx = (int)temp[0];
-            }
-            while(idx > 0 );
-
-        }
-        else
-    #endif*/
     {
         do
         {
@@ -823,19 +607,12 @@ double icvEvalHidHaarClassifier( CvHidHaarClassifier* classifier,
 
 
 static int
-cvRunHaarClassifierCascadeSum( const CvHaarClassifierCascade* _cascade,
+viscasRunHaarClassifierCascadeSum( const CvHaarClassifierCascade* _cascade,
                                CvPoint pt, double& stage_sum, int start_stage )
 {
-#ifdef CV_HAAR_USE_AVX
-    bool haveAVX = false;
-    if(cv::checkHardwareSupport(CV_CPU_AVX))
-    if(__xgetbv()&0x6)// Check if the OS will save the YMM registers
-       haveAVX = true;
-#else
 #  ifdef CV_HAAR_USE_SSE
     bool haveSSE2 = cv::checkHardwareSupport(CV_CPU_SSE2);
 #  endif
-#endif
 
     int p_offset, pq_offset;
     int i, j;
@@ -875,18 +652,6 @@ cvRunHaarClassifierCascadeSum( const CvHaarClassifierCascade* _cascade,
         {
             stage_sum = 0.0;
             j = 0;
-
-#ifdef CV_HAAR_USE_AVX
-            if(haveAVX)
-            {
-                for( ; j <= ptr->count - 8; j += 8 )
-                {
-                    stage_sum += icvEvalHidHaarClassifierAVX(
-                        ptr->classifier + j,
-                        variance_norm_factor, p_offset );
-                }
-            }
-#endif
             for( ; j < ptr->count; j++ )
             {
                 stage_sum += icvEvalHidHaarClassifier( ptr->classifier + j, variance_norm_factor, p_offset );
@@ -907,255 +672,7 @@ cvRunHaarClassifierCascadeSum( const CvHaarClassifierCascade* _cascade,
     }
     else if( cascade->isStumpBased )
     {
-#ifdef CV_HAAR_USE_AVX
-        if(haveAVX)
-        {
-            CvHidHaarClassifier* classifiers[8];
-            CvHidHaarTreeNode* nodes[8];
-            for( i = start_stage; i < cascade->count; i++ )
-            {
-                stage_sum = 0.0;
-                j = 0;
-                float CV_DECL_ALIGNED(32) buf[8];
-                if( cascade->stage_classifier[i].two_rects )
-                {
-                    for( ; j <= cascade->stage_classifier[i].count - 8; j += 8 )
-                    {
-                        classifiers[0] = cascade->stage_classifier[i].classifier + j;
-                        nodes[0] = classifiers[0]->node;
-                        classifiers[1] = cascade->stage_classifier[i].classifier + j + 1;
-                        nodes[1] = classifiers[1]->node;
-                        classifiers[2] = cascade->stage_classifier[i].classifier + j + 2;
-                        nodes[2] = classifiers[2]->node;
-                        classifiers[3] = cascade->stage_classifier[i].classifier + j + 3;
-                        nodes[3] = classifiers[3]->node;
-                        classifiers[4] = cascade->stage_classifier[i].classifier + j + 4;
-                        nodes[4] = classifiers[4]->node;
-                        classifiers[5] = cascade->stage_classifier[i].classifier + j + 5;
-                        nodes[5] = classifiers[5]->node;
-                        classifiers[6] = cascade->stage_classifier[i].classifier + j + 6;
-                        nodes[6] = classifiers[6]->node;
-                        classifiers[7] = cascade->stage_classifier[i].classifier + j + 7;
-                        nodes[7] = classifiers[7]->node;
-
-                        __m256 t = _mm256_set1_ps(static_cast<float>(variance_norm_factor));
-                        t = _mm256_mul_ps(t, _mm256_set_ps(nodes[7]->threshold,
-                                                           nodes[6]->threshold,
-                                                           nodes[5]->threshold,
-                                                           nodes[4]->threshold,
-                                                           nodes[3]->threshold,
-                                                           nodes[2]->threshold,
-                                                           nodes[1]->threshold,
-                                                           nodes[0]->threshold));
-
-                        __m256 offset = _mm256_set_ps(calc_sumf(nodes[7]->feature.rect[0], p_offset),
-                                                      calc_sumf(nodes[6]->feature.rect[0], p_offset),
-                                                      calc_sumf(nodes[5]->feature.rect[0], p_offset),
-                                                      calc_sumf(nodes[4]->feature.rect[0], p_offset),
-                                                      calc_sumf(nodes[3]->feature.rect[0], p_offset),
-                                                      calc_sumf(nodes[2]->feature.rect[0], p_offset),
-                                                      calc_sumf(nodes[1]->feature.rect[0], p_offset),
-                                                      calc_sumf(nodes[0]->feature.rect[0], p_offset));
-
-                        __m256 weight = _mm256_set_ps(nodes[7]->feature.rect[0].weight,
-                                                      nodes[6]->feature.rect[0].weight,
-                                                      nodes[5]->feature.rect[0].weight,
-                                                      nodes[4]->feature.rect[0].weight,
-                                                      nodes[3]->feature.rect[0].weight,
-                                                      nodes[2]->feature.rect[0].weight,
-                                                      nodes[1]->feature.rect[0].weight,
-                                                      nodes[0]->feature.rect[0].weight);
-
-                        __m256 sum = _mm256_mul_ps(offset, weight);
-
-                        offset = _mm256_set_ps(calc_sumf(nodes[7]->feature.rect[1], p_offset),
-                                               calc_sumf(nodes[6]->feature.rect[1], p_offset),
-                                               calc_sumf(nodes[5]->feature.rect[1], p_offset),
-                                               calc_sumf(nodes[4]->feature.rect[1], p_offset),
-                                               calc_sumf(nodes[3]->feature.rect[1], p_offset),
-                                               calc_sumf(nodes[2]->feature.rect[1], p_offset),
-                                               calc_sumf(nodes[1]->feature.rect[1], p_offset),
-                                               calc_sumf(nodes[0]->feature.rect[1], p_offset));
-
-                        weight = _mm256_set_ps(nodes[7]->feature.rect[1].weight,
-                                               nodes[6]->feature.rect[1].weight,
-                                               nodes[5]->feature.rect[1].weight,
-                                               nodes[4]->feature.rect[1].weight,
-                                               nodes[3]->feature.rect[1].weight,
-                                               nodes[2]->feature.rect[1].weight,
-                                               nodes[1]->feature.rect[1].weight,
-                                               nodes[0]->feature.rect[1].weight);
-
-                        sum = _mm256_add_ps(sum, _mm256_mul_ps(offset,weight));
-
-                        __m256 alpha0 = _mm256_set_ps(classifiers[7]->alpha[0],
-                                                      classifiers[6]->alpha[0],
-                                                      classifiers[5]->alpha[0],
-                                                      classifiers[4]->alpha[0],
-                                                      classifiers[3]->alpha[0],
-                                                      classifiers[2]->alpha[0],
-                                                      classifiers[1]->alpha[0],
-                                                      classifiers[0]->alpha[0]);
-                        __m256 alpha1 = _mm256_set_ps(classifiers[7]->alpha[1],
-                                                      classifiers[6]->alpha[1],
-                                                      classifiers[5]->alpha[1],
-                                                      classifiers[4]->alpha[1],
-                                                      classifiers[3]->alpha[1],
-                                                      classifiers[2]->alpha[1],
-                                                      classifiers[1]->alpha[1],
-                                                      classifiers[0]->alpha[1]);
-
-                        _mm256_store_ps(buf, _mm256_blendv_ps(alpha0, alpha1, _mm256_cmp_ps(t, sum, _CMP_LE_OQ)));
-                        stage_sum += (buf[0]+buf[1]+buf[2]+buf[3]+buf[4]+buf[5]+buf[6]+buf[7]);
-                    }
-
-                    for( ; j < cascade->stage_classifier[i].count; j++ )
-                    {
-                        CvHidHaarClassifier* classifier = cascade->stage_classifier[i].classifier + j;
-                        CvHidHaarTreeNode* node = classifier->node;
-
-                        double t = node->threshold*variance_norm_factor;
-                        double sum = calc_sum(node->feature.rect[0],p_offset) * node->feature.rect[0].weight;
-                        sum += calc_sum(node->feature.rect[1],p_offset) * node->feature.rect[1].weight;
-                        stage_sum += classifier->alpha[sum >= t];
-                    }
-                }
-                else
-                {
-                    for( ; j <= (cascade->stage_classifier[i].count)-8; j+=8 )
-                    {
-                        float  CV_DECL_ALIGNED(32) tmp[8] = {0,0,0,0,0,0,0,0};
-
-                        classifiers[0] = cascade->stage_classifier[i].classifier + j;
-                        nodes[0] = classifiers[0]->node;
-                        classifiers[1] = cascade->stage_classifier[i].classifier + j + 1;
-                        nodes[1] = classifiers[1]->node;
-                        classifiers[2] = cascade->stage_classifier[i].classifier + j + 2;
-                        nodes[2] = classifiers[2]->node;
-                        classifiers[3] = cascade->stage_classifier[i].classifier + j + 3;
-                        nodes[3] = classifiers[3]->node;
-                        classifiers[4] = cascade->stage_classifier[i].classifier + j + 4;
-                        nodes[4] = classifiers[4]->node;
-                        classifiers[5] = cascade->stage_classifier[i].classifier + j + 5;
-                        nodes[5] = classifiers[5]->node;
-                        classifiers[6] = cascade->stage_classifier[i].classifier + j + 6;
-                        nodes[6] = classifiers[6]->node;
-                        classifiers[7] = cascade->stage_classifier[i].classifier + j + 7;
-                        nodes[7] = classifiers[7]->node;
-
-                        __m256 t = _mm256_set1_ps(static_cast<float>(variance_norm_factor));
-
-                        t = _mm256_mul_ps(t, _mm256_set_ps(nodes[7]->threshold,
-                                                           nodes[6]->threshold,
-                                                           nodes[5]->threshold,
-                                                           nodes[4]->threshold,
-                                                           nodes[3]->threshold,
-                                                           nodes[2]->threshold,
-                                                           nodes[1]->threshold,
-                                                           nodes[0]->threshold));
-
-                        __m256 offset = _mm256_set_ps(calc_sumf(nodes[7]->feature.rect[0], p_offset),
-                                                      calc_sumf(nodes[6]->feature.rect[0], p_offset),
-                                                      calc_sumf(nodes[5]->feature.rect[0], p_offset),
-                                                      calc_sumf(nodes[4]->feature.rect[0], p_offset),
-                                                      calc_sumf(nodes[3]->feature.rect[0], p_offset),
-                                                      calc_sumf(nodes[2]->feature.rect[0], p_offset),
-                                                      calc_sumf(nodes[1]->feature.rect[0], p_offset),
-                                                      calc_sumf(nodes[0]->feature.rect[0], p_offset));
-
-                        __m256 weight = _mm256_set_ps(nodes[7]->feature.rect[0].weight,
-                                                      nodes[6]->feature.rect[0].weight,
-                                                      nodes[5]->feature.rect[0].weight,
-                                                      nodes[4]->feature.rect[0].weight,
-                                                      nodes[3]->feature.rect[0].weight,
-                                                      nodes[2]->feature.rect[0].weight,
-                                                      nodes[1]->feature.rect[0].weight,
-                                                      nodes[0]->feature.rect[0].weight);
-
-                        __m256 sum = _mm256_mul_ps(offset, weight);
-
-                        offset = _mm256_set_ps(calc_sumf(nodes[7]->feature.rect[1], p_offset),
-                                               calc_sumf(nodes[6]->feature.rect[1], p_offset),
-                                               calc_sumf(nodes[5]->feature.rect[1], p_offset),
-                                               calc_sumf(nodes[4]->feature.rect[1], p_offset),
-                                               calc_sumf(nodes[3]->feature.rect[1], p_offset),
-                                               calc_sumf(nodes[2]->feature.rect[1], p_offset),
-                                               calc_sumf(nodes[1]->feature.rect[1], p_offset),
-                                               calc_sumf(nodes[0]->feature.rect[1], p_offset));
-
-                        weight = _mm256_set_ps(nodes[7]->feature.rect[1].weight,
-                                               nodes[6]->feature.rect[1].weight,
-                                               nodes[5]->feature.rect[1].weight,
-                                               nodes[4]->feature.rect[1].weight,
-                                               nodes[3]->feature.rect[1].weight,
-                                               nodes[2]->feature.rect[1].weight,
-                                               nodes[1]->feature.rect[1].weight,
-                                               nodes[0]->feature.rect[1].weight);
-
-                        sum = _mm256_add_ps(sum, _mm256_mul_ps(offset, weight));
-
-                        if( nodes[0]->feature.rect[2].p0 )
-                            tmp[0] = calc_sumf(nodes[0]->feature.rect[2],p_offset) * nodes[0]->feature.rect[2].weight;
-                        if( nodes[1]->feature.rect[2].p0 )
-                            tmp[1] = calc_sumf(nodes[1]->feature.rect[2],p_offset) * nodes[1]->feature.rect[2].weight;
-                        if( nodes[2]->feature.rect[2].p0 )
-                            tmp[2] = calc_sumf(nodes[2]->feature.rect[2],p_offset) * nodes[2]->feature.rect[2].weight;
-                        if( nodes[3]->feature.rect[2].p0 )
-                            tmp[3] = calc_sumf(nodes[3]->feature.rect[2],p_offset) * nodes[3]->feature.rect[2].weight;
-                        if( nodes[4]->feature.rect[2].p0 )
-                            tmp[4] = calc_sumf(nodes[4]->feature.rect[2],p_offset) * nodes[4]->feature.rect[2].weight;
-                        if( nodes[5]->feature.rect[2].p0 )
-                            tmp[5] = calc_sumf(nodes[5]->feature.rect[2],p_offset) * nodes[5]->feature.rect[2].weight;
-                        if( nodes[6]->feature.rect[2].p0 )
-                            tmp[6] = calc_sumf(nodes[6]->feature.rect[2],p_offset) * nodes[6]->feature.rect[2].weight;
-                        if( nodes[7]->feature.rect[2].p0 )
-                            tmp[7] = calc_sumf(nodes[7]->feature.rect[2],p_offset) * nodes[7]->feature.rect[2].weight;
-
-                        sum = _mm256_add_ps(sum, _mm256_load_ps(tmp));
-
-                        __m256 alpha0 = _mm256_set_ps(classifiers[7]->alpha[0],
-                                                      classifiers[6]->alpha[0],
-                                                      classifiers[5]->alpha[0],
-                                                      classifiers[4]->alpha[0],
-                                                      classifiers[3]->alpha[0],
-                                                      classifiers[2]->alpha[0],
-                                                      classifiers[1]->alpha[0],
-                                                      classifiers[0]->alpha[0]);
-                        __m256 alpha1 = _mm256_set_ps(classifiers[7]->alpha[1],
-                                                      classifiers[6]->alpha[1],
-                                                      classifiers[5]->alpha[1],
-                                                      classifiers[4]->alpha[1],
-                                                      classifiers[3]->alpha[1],
-                                                      classifiers[2]->alpha[1],
-                                                      classifiers[1]->alpha[1],
-                                                      classifiers[0]->alpha[1]);
-
-                        __m256 outBuf = _mm256_blendv_ps(alpha0, alpha1, _mm256_cmp_ps(t, sum, _CMP_LE_OQ ));
-                        outBuf = _mm256_hadd_ps(outBuf, outBuf);
-                        outBuf = _mm256_hadd_ps(outBuf, outBuf);
-                        _mm256_store_ps(buf, outBuf);
-                        stage_sum += (buf[0] + buf[4]);
-                    }
-
-                    for( ; j < cascade->stage_classifier[i].count; j++ )
-                    {
-                        CvHidHaarClassifier* classifier = cascade->stage_classifier[i].classifier + j;
-                        CvHidHaarTreeNode* node = classifier->node;
-
-                        double t = node->threshold*variance_norm_factor;
-                        double sum = calc_sum(node->feature.rect[0],p_offset) * node->feature.rect[0].weight;
-                        sum += calc_sum(node->feature.rect[1],p_offset) * node->feature.rect[1].weight;
-                        if( node->feature.rect[2].p0 )
-                            sum += calc_sum(node->feature.rect[2],p_offset) * node->feature.rect[2].weight;
-                        stage_sum += classifier->alpha[sum >= t];
-                    }
-                }
-                if( stage_sum < cascade->stage_classifier[i].threshold )
-                    return -i;
-            }
-        }
-        else
-#elif defined CV_HAAR_USE_SSE //old SSE optimization
+#ifdef CV_HAAR_USE_SSE //old SSE optimization
         if(haveSSE2)
         {
             for( i = start_stage; i < cascade->count; i++ )
@@ -1246,18 +763,6 @@ cvRunHaarClassifierCascadeSum( const CvHaarClassifierCascade* _cascade,
         {
             stage_sum = 0.0;
             int k = 0;
-
-#ifdef CV_HAAR_USE_AVX
-            if(haveAVX)
-            {
-                for( ; k < cascade->stage_classifier[i].count - 8; k += 8 )
-                {
-                    stage_sum += icvEvalHidHaarClassifierAVX(
-                        cascade->stage_classifier[i].classifier + k,
-                        variance_norm_factor, p_offset );
-                }
-            }
-#endif
             for(; k < cascade->stage_classifier[i].count; k++ )
             {
 
@@ -1273,15 +778,6 @@ cvRunHaarClassifierCascadeSum( const CvHaarClassifierCascade* _cascade,
     return 1;
 }
 
-
-CV_IMPL int
-cvRunHaarClassifierCascade( const CvHaarClassifierCascade* _cascade,
-                            CvPoint pt, int start_stage )
-{
-    double stage_sum;
-    return cvRunHaarClassifierCascadeSum(_cascade, pt, stage_sum, start_stage);
-}
-
 namespace cv
 {
 
@@ -1293,7 +789,7 @@ public:
                                           const Mat& _sum1, const Mat& _sqsum1, Mat* _norm1,
                                           Mat* _mask1, Rect _equRect, std::vector<Rect>& _vec,
                                           std::vector<int>& _levels, std::vector<double>& _weights,
-                                          bool _outputLevels, Mutex *_mtx )
+                                          bool _outputLevels, Mutex *_mtx, VisualCascade* pVisCas )
     {
         cascade = _cascade;
         stripSize = _stripSize;
@@ -1307,6 +803,7 @@ public:
         rejectLevels = _outputLevels ? &_levels : 0;
         levelWeights = _outputLevels ? &_weights : 0;
         mtx = _mtx;
+		mpVisCas = pVisCas;
     }
 
     void operator()( const Range& range ) const
@@ -1325,9 +822,9 @@ public:
 		{
 			for (x = 0; x < ssz.width; x += ystep)
 			{
-				std::cout << ".";
+				mpVisCas->show(x, y, winSize);
 				double gypWeight;
-				int result = cvRunHaarClassifierCascadeSum(cascade, cvPoint(x, y), gypWeight, 0);
+				int result = viscasRunHaarClassifierCascadeSum(cascade, cvPoint(x, y), gypWeight, 0);
 				if (rejectLevels)
 				{
 					if (result == 1)
@@ -1353,7 +850,6 @@ public:
 					}
 				}
 			}
-			std::cout << std::endl;
 		}
     }
 
@@ -1366,75 +862,7 @@ public:
     std::vector<int>* rejectLevels;
     std::vector<double>* levelWeights;
     Mutex* mtx;
-};
-
-
-class HaarDetectObjects_ScaleCascade_Invoker : public ParallelLoopBody
-{
-public:
-    HaarDetectObjects_ScaleCascade_Invoker( const CvHaarClassifierCascade* _cascade,
-                                            Size _winsize, const Range& _xrange, double _ystep,
-                                            size_t _sumstep, const int** _p, const int** _pq,
-                                            std::vector<Rect>& _vec, Mutex* _mtx )
-    {
-        cascade = _cascade;
-        winsize = _winsize;
-        xrange = _xrange;
-        ystep = _ystep;
-        sumstep = _sumstep;
-        p = _p; pq = _pq;
-        vec = &_vec;
-        mtx = _mtx;
-    }
-
-    void operator()( const Range& range ) const
-    {
-        int iy, startY = range.start, endY = range.end;
-        const int *p0 = p[0], *p1 = p[1], *p2 = p[2], *p3 = p[3];
-        const int *pq0 = pq[0], *pq1 = pq[1], *pq2 = pq[2], *pq3 = pq[3];
-        bool doCannyPruning = p0 != 0;
-        int sstep = (int)(sumstep/sizeof(p0[0]));
-
-        for( iy = startY; iy < endY; iy++ )
-        {
-            int ix, y = cvRound(iy*ystep), ixstep = 1;
-            for( ix = xrange.start; ix < xrange.end; ix += ixstep )
-            {
-                int x = cvRound(ix*ystep); // it should really be ystep, not ixstep
-
-                if( doCannyPruning )
-                {
-                    int offset = y*sstep + x;
-                    int s = p0[offset] - p1[offset] - p2[offset] + p3[offset];
-                    int sq = pq0[offset] - pq1[offset] - pq2[offset] + pq3[offset];
-                    if( s < 100 || sq < 20 )
-                    {
-                        ixstep = 2;
-                        continue;
-                    }
-                }
-
-                int result = cvRunHaarClassifierCascade( cascade, cvPoint(x, y), 0 );
-                if( result > 0 )
-                {
-                    mtx->lock();
-                    vec->push_back(Rect(x, y, winsize.width, winsize.height));
-                    mtx->unlock();
-                }
-                ixstep = result != 0 ? 1 : 2;
-            }
-        }
-    }
-
-    const CvHaarClassifierCascade* cascade;
-    double ystep;
-    size_t sumstep;
-    Size winsize;
-    Range xrange;
-    const int** p;
-    const int** pq;
-    std::vector<Rect>* vec;
-    Mutex* mtx;
+	VisualCascade* mpVisCas;
 };
 
 
@@ -1442,11 +870,11 @@ public:
 
 
 CvSeq*
-cvHaarDetectObjectsForROC( const CvArr* _img,
+viscasHaarDetectObjectsForROC( const CvArr* _img,
                      CvHaarClassifierCascade* cascade, CvMemStorage* storage,
                      std::vector<int>& rejectLevels, std::vector<double>& levelWeights,
                      double scaleFactor, int minNeighbors, int flags,
-                     CvSize minSize, CvSize maxSize, bool outputRejectLevels )
+                     CvSize minSize, CvSize maxSize, bool outputRejectLevels, VisualCascade* pVisCas )
 {
     const double GROUP_EPS = 0.2;
     CvMat stub, *img = (CvMat*)_img;
@@ -1510,15 +938,9 @@ cvHaarDetectObjectsForROC( const CvArr* _img,
     if( findBiggestObject )
         flags &= ~(CV_HAAR_SCALE_IMAGE|CV_HAAR_DO_CANNY_PRUNING);
 
-    if( flags & CV_HAAR_SCALE_IMAGE )
+    //if( flags & CV_HAAR_SCALE_IMAGE )
     {
         CvSize winSize0 = cascade->orig_window_size;
-#ifdef HAVE_IPP
-        int use_ipp = CV_IPP_CHECK_COND && (cascade->hid_cascade->ipp_stages != 0);
-
-        if( use_ipp )
-            normImg.reset(cvCreateMat( img->rows, img->cols, CV_32FC1));
-#endif
         imgSmall.reset(cvCreateMat( img->rows + 1, img->cols + 1, CV_8UC1 ));
 
         for( factor = 1; ; factor *= scaleFactor )
@@ -1561,152 +983,15 @@ cvHaarDetectObjectsForROC( const CvArr* _img,
             int stripCount = ((sz1.width/ystep)*(sz1.height + ystep-1)/ystep + LOCS_PER_THREAD/2)/LOCS_PER_THREAD;
             stripCount = std::min(std::max(stripCount, 1), 100);
 
-#ifdef HAVE_IPP
-            if( use_ipp )
-            {
-                cv::Mat fsum(sum1.rows, sum1.cols, CV_32F, sum1.data.ptr, sum1.step);
-                cv::cvarrToMat(&sum1).convertTo(fsum, CV_32F, 1, -(1<<24));
-            }
-            else
-#endif
-                cvSetImagesForHaarClassifierCascade( cascade, &sum1, &sqsum1, _tilted, 1. );
+            viscasSetImagesForHaarClassifierCascade( cascade, &sum1, &sqsum1, _tilted, 1. );
 			std::cout << "detecting at size " << sz.width << "X" << sz.height << std::endl;
             cv::Mat _norm1 = cv::cvarrToMat(&norm1), _mask1 = cv::cvarrToMat(&mask1);
 			cv::HaarDetectObjects_ScaleImage_Invoker invoker =
                          cv::HaarDetectObjects_ScaleImage_Invoker(cascade,
                                 (((sz1.height + stripCount - 1)/stripCount + ystep-1)/ystep)*ystep,
                                 factor, cv::cvarrToMat(&sum1), cv::cvarrToMat(&sqsum1), &_norm1, &_mask1,
-                                cv::Rect(equRect), allCandidates, rejectLevels, levelWeights, outputRejectLevels, &mtx);
+                                cv::Rect(equRect), allCandidates, rejectLevels, levelWeights, outputRejectLevels, &mtx, pVisCas);
 			invoker(cv::Range(0, stripCount));
-        }
-    }
-    else
-    {
-        int n_factors = 0;
-        cv::Rect scanROI;
-
-        cvIntegral( img, sum, sqsum, tilted );
-
-        if( doCannyPruning )
-        {
-            sumcanny.reset(cvCreateMat( img->rows + 1, img->cols + 1, CV_32SC1 ));
-            cvCanny( img, temp, 0, 50, 3 );
-            cvIntegral( temp, sumcanny );
-        }
-
-        for( n_factors = 0, factor = 1;
-             factor*cascade->orig_window_size.width < img->cols - 10 &&
-             factor*cascade->orig_window_size.height < img->rows - 10;
-             n_factors++, factor *= scaleFactor )
-            ;
-
-        if( findBiggestObject )
-        {
-            scaleFactor = 1./scaleFactor;
-            factor *= scaleFactor;
-        }
-        else
-            factor = 1;
-
-        for( ; n_factors-- > 0; factor *= scaleFactor )
-        {
-            const double ystep = std::max( 2., factor );
-            CvSize winSize(cvRound( cascade->orig_window_size.width * factor ),
-                                cvRound( cascade->orig_window_size.height * factor ));
-            CvRect equRect;
-            int *p[4] = {0,0,0,0};
-            int *pq[4] = {0,0,0,0};
-            int startX = 0, startY = 0;
-            int endX = cvRound((img->cols - winSize.width) / ystep);
-            int endY = cvRound((img->rows - winSize.height) / ystep);
-
-            if( winSize.width < minSize.width || winSize.height < minSize.height )
-            {
-                if( findBiggestObject )
-                    break;
-                continue;
-            }
-
-            if ( winSize.width > maxSize.width || winSize.height > maxSize.height )
-            {
-                if( !findBiggestObject )
-                    break;
-                continue;
-            }
-
-            cvSetImagesForHaarClassifierCascade( cascade, sum, sqsum, tilted, factor );
-            cvZero( temp );
-
-            if( doCannyPruning )
-            {
-                equRect.x = cvRound(winSize.width*0.15);
-                equRect.y = cvRound(winSize.height*0.15);
-                equRect.width = cvRound(winSize.width*0.7);
-                equRect.height = cvRound(winSize.height*0.7);
-
-                p[0] = (int*)(sumcanny->data.ptr + equRect.y*sumcanny->step) + equRect.x;
-                p[1] = (int*)(sumcanny->data.ptr + equRect.y*sumcanny->step)
-                            + equRect.x + equRect.width;
-                p[2] = (int*)(sumcanny->data.ptr + (equRect.y + equRect.height)*sumcanny->step) + equRect.x;
-                p[3] = (int*)(sumcanny->data.ptr + (equRect.y + equRect.height)*sumcanny->step)
-                            + equRect.x + equRect.width;
-
-                pq[0] = (int*)(sum->data.ptr + equRect.y*sum->step) + equRect.x;
-                pq[1] = (int*)(sum->data.ptr + equRect.y*sum->step)
-                            + equRect.x + equRect.width;
-                pq[2] = (int*)(sum->data.ptr + (equRect.y + equRect.height)*sum->step) + equRect.x;
-                pq[3] = (int*)(sum->data.ptr + (equRect.y + equRect.height)*sum->step)
-                            + equRect.x + equRect.width;
-            }
-
-            if( scanROI.area() > 0 )
-            {
-                //adjust start_height and stop_height
-                startY = cvRound(scanROI.y / ystep);
-                endY = cvRound((scanROI.y + scanROI.height - winSize.height) / ystep);
-
-                startX = cvRound(scanROI.x / ystep);
-                endX = cvRound((scanROI.x + scanROI.width - winSize.width) / ystep);
-            }
-
-            cv::parallel_for_(cv::Range(startY, endY),
-                cv::HaarDetectObjects_ScaleCascade_Invoker(cascade, winSize, cv::Range(startX, endX),
-                                                           ystep, sum->step, (const int**)p,
-                                                           (const int**)pq, allCandidates, &mtx ));
-
-            if( findBiggestObject && !allCandidates.empty() && scanROI.area() == 0 )
-            {
-                rectList.resize(allCandidates.size());
-                std::copy(allCandidates.begin(), allCandidates.end(), rectList.begin());
-
-                groupRectangles(rectList, std::max(minNeighbors, 1), GROUP_EPS);
-
-                if( !rectList.empty() )
-                {
-                    size_t i, sz = rectList.size();
-                    cv::Rect maxRect;
-
-                    for( i = 0; i < sz; i++ )
-                    {
-                        if( rectList[i].area() > maxRect.area() )
-                            maxRect = rectList[i];
-                    }
-
-                    allCandidates.push_back(maxRect);
-
-                    scanROI = maxRect;
-                    int dx = cvRound(maxRect.width*GROUP_EPS);
-                    int dy = cvRound(maxRect.height*GROUP_EPS);
-                    scanROI.x = std::max(scanROI.x - dx, 0);
-                    scanROI.y = std::max(scanROI.y - dy, 0);
-                    scanROI.width = std::min(scanROI.width + dx*2, img->cols-1-scanROI.x);
-                    scanROI.height = std::min(scanROI.height + dy*2, img->rows-1-scanROI.y);
-
-                    double minScale = roughSearch ? 0.6 : 0.4;
-                    minSize.width = cvRound(maxRect.width*minScale);
-                    minSize.height = cvRound(maxRect.height*minScale);
-                }
-            }
         }
     }
 
@@ -1755,19 +1040,6 @@ cvHaarDetectObjectsForROC( const CvArr* _img,
     }
 
     return result_seq;
-}
-
-CV_IMPL CvSeq*
-cvHaarDetectObjects( const CvArr* _img,
-                     CvHaarClassifierCascade* cascade, CvMemStorage* storage,
-                     double scaleFactor,
-                     int minNeighbors, int flags, CvSize minSize, CvSize maxSize )
-{
-    std::vector<int> fakeLevels;
-    std::vector<double> fakeWeights;
-    return cvHaarDetectObjectsForROC( _img, cascade, storage, fakeLevels, fakeWeights,
-                                scaleFactor, minNeighbors, flags, minSize, maxSize, false );
-
 }
 
 
@@ -1888,7 +1160,7 @@ icvLoadCascadeCART( const char** input_cascade, int n, CvSize orig_window_size )
 #endif
 
 CV_IMPL CvHaarClassifierCascade*
-cvLoadHaarClassifierCascade( const char* directory, CvSize orig_window_size )
+viscasLoadHaarClassifierCascade( const char* directory, CvSize orig_window_size )
 {
     if( !directory )
         CV_Error( CV_StsNullPtr, "Null path is passed" );
@@ -1954,7 +1226,7 @@ cvLoadHaarClassifierCascade( const char* directory, CvSize orig_window_size )
 
 
 CV_IMPL void
-cvReleaseHaarClassifierCascade( CvHaarClassifierCascade** _cascade )
+viscasReleaseHaarClassifierCascade( CvHaarClassifierCascade** _cascade )
 {
     if( _cascade && *_cascade )
     {
@@ -2514,8 +1786,8 @@ icvCloneHaarClassifier( const void* struct_ptr )
 }
 
 
-CvType haar_type( CV_TYPE_NAME_HAAR, icvIsHaarClassifier,
-                  (CvReleaseFunc)cvReleaseHaarClassifierCascade,
+CvType vis_haar_type( CV_TYPE_NAME_HAAR, icvIsHaarClassifier,
+                  (CvReleaseFunc)viscasReleaseHaarClassifierCascade,
                   icvReadHaarClassifier, icvWriteHaarClassifier,
                   icvCloneHaarClassifier );
 
