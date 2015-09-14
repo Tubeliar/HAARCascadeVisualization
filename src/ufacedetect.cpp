@@ -19,11 +19,12 @@ static void help()
     cout << "Usage:\n"
             "./facedetect [--cascade=<cascade_path> this is the primary trained classifier such as frontal face]\n"
                "   [--scale=<image scale greater or equal to 1, try 1.3 for example>]\n"
+               "   [--scalefactor=<factor greater than 1. Bigger numbers cause a coarser bnt faster search>]\n"
                "   [filename]\n\n"
             "\tUsing OpenCV version " << CV_VERSION << "\n" << endl;
 }
 
-void detectAndDraw( UMat& img, Mat& canvas, VisualCascade& cascade, double scale );
+void detectAndDraw( UMat& img, Mat& canvas, VisualCascade& cascade, double scale, double factor );
 
 string cascadeName = "../../data/haarcascades/haarcascade_frontalface_alt.xml";
 
@@ -34,12 +35,15 @@ int main( int argc, const char** argv )
     Mat canvas;
     const string scaleOpt = "--scale=";
     size_t scaleOptLen = scaleOpt.length();
+	const string scaleFactorOpt = "--scalefactor=";
+	size_t scaleFactorOptLen = scaleFactorOpt.length();
     const string cascadeOpt = "--cascade=";
     size_t cascadeOptLen = cascadeOpt.length();
     String inputName;
 
     VisualCascade cascade;
     double scale = 1;
+	double factor = 1.5;
 
     for( int i = 1; i < argc; i++ )
     {
@@ -54,6 +58,12 @@ int main( int argc, const char** argv )
                 scale = 1;
             cout << "scale = " << scale << endl;
         }
+		else if (scaleFactorOpt.compare(0, scaleFactorOptLen, argv[i], scaleFactorOptLen) == 0)
+		{
+			if (!sscanf(argv[i] + scaleFactorOpt.length(), "%lf", &factor) || factor <= 1)
+				factor = 1.5;
+			cout << "scale factor = " << scale << endl;
+		}
         else if( argv[i][0] == '-' )
         {
             cerr << "WARNING: Unknown option %s" << argv[i] << endl;
@@ -82,14 +92,14 @@ int main( int argc, const char** argv )
 	cout << "Detecting face(s) in " << inputName << endl;
     if( !image.empty() )
     {
-        detectAndDraw( image, canvas, cascade, scale );
+        detectAndDraw( image, canvas, cascade, scale, factor );
         waitKey(0);
     }
 
     return 0;
 }
 
-void detectAndDraw( UMat& img, Mat& canvas, VisualCascade& cascade, double scale0 )
+void detectAndDraw( UMat& img, Mat& canvas, VisualCascade& cascade, double scale0, double factor )
 {
     int i = 0;
     double scale=1;
@@ -112,7 +122,7 @@ void detectAndDraw( UMat& img, Mat& canvas, VisualCascade& cascade, double scale
     equalizeHist( gray, gray );
 
     cascade.detectMultiScale( gray, faces,
-        1.1, 3, 0
+        factor, 3, 0
         //|CASCADE_FIND_BIGGEST_OBJECT
         //|CASCADE_DO_ROUGH_SEARCH
         |CASCADE_SCALE_IMAGE
