@@ -12,16 +12,18 @@ using namespace std;
 struct getRect { Rect operator ()(const CvAvgComp& e) const { return e.rect; } };
 struct getNeighbors { int operator ()(const CvAvgComp& e) const { return e.neighbors; } };
 
-void VisualCascade::detectMultiScale(InputArray _image, std::vector<Rect>& objects,
-	double scaleFactor, int minNeighbors,
+string VisualCascade::mWindowName = "Cascade Visualiser";
+
+void VisualCascade::detectMultiScale(InputArray showImage, InputArray _image, std::vector<Rect>& objects,
+	double showScale, double scaleFactor, int minNeighbors,
 	int flags, Size minObjectSize, Size maxObjectSize)
 {
+	mShowScale = showScale;
 	std::vector<int> rejectLevels;
 	std::vector<double> levelWeights;
+	mProgress = showImage.getMat();
 	Mat image = _image.getMat();
 	CV_Assert(scaleFactor > 1 && image.depth() == CV_8U);
-	mOriginal = image;
-	cvtColor(mOriginal, mProgress, CV_GRAY2BGR);
 
 	if (empty()) return;
 
@@ -50,14 +52,16 @@ void VisualCascade::detectMultiScale(InputArray _image, std::vector<Rect>& objec
 	}
 }
 
-void VisualCascade::show(int x, int y, Size windowSize, Size ssz)
+void VisualCascade::show(int x, int y, Size windowSize, Size ssz, bool keep)
 {
 	Mat result;
-	mProgress.copyTo(result);
-	int xOffset = (mProgress.cols - windowSize.width)  * x / ssz.width;
-	int yOffset = (mProgress.rows - windowSize.height) * y / ssz.height;
+	Size showWindow(static_cast<int>(mShowScale * windowSize.width), static_cast<int>(mShowScale * windowSize.height));
+	int xOffset = (mProgress.cols - showWindow.width)  * x / ssz.width;
+	int yOffset = (mProgress.rows - showWindow.height) * y / ssz.height;
 	//cout << ssz << " " << x << " " << xOffset << endl;
-	rectangle(result, Rect(Point(xOffset, yOffset), windowSize), Scalar(0, 0, 255));
-	imshow("Cascade Visualiser", result);
+	if (keep) rectangle(mProgress, Rect(Point(xOffset, yOffset), showWindow), Scalar(0, 255, 0));
+	mProgress.copyTo(result);
+	rectangle(result, Rect(Point(xOffset, yOffset), showWindow), Scalar(0, 0, 255), 2);
+	imshow(mWindowName, result);
 	waitKey(1);
 }

@@ -6,18 +6,22 @@
 class VisualCascade : public cv::CascadeClassifierImpl
 {
 public:
-	void detectMultiScale(cv::InputArray image,
+	void detectMultiScale(cv::InputArray show,
+		cv::InputArray image,
 		CV_OUT std::vector<cv::Rect>& objects,
+		double showScale = 1,
 		double scaleFactor = 1.1,
 		int minNeighbors = 3, int flags = 0,
 		cv::Size minSize = cv::Size(),
 		cv::Size maxSize = cv::Size());
 
-	void show(int x, int y, cv::Size windowSize, cv::Size ssz);
+	void show(int x, int y, cv::Size windowSize, cv::Size ssz, bool keep);
+
+	static std::string mWindowName;
 
 protected:
-	cv::Mat mOriginal;
 	cv::Mat mProgress;
+	double mShowScale;
 };
 
 #endif

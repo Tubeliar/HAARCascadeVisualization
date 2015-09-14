@@ -822,7 +822,6 @@ public:
 		{
 			for (x = 0; x < ssz.width; x += ystep)
 			{
-				mpVisCas->show(x, y - y1, winSize, ssz);
 				double gypWeight;
 				int result = viscasRunHaarClassifierCascadeSum(cascade, cvPoint(x, y), gypWeight, 0);
 				if (rejectLevels)
@@ -849,6 +848,7 @@ public:
 						mtx->unlock();
 					}
 				}
+				mpVisCas->show(x, y - y1, winSize, ssz, result > 0);
 			}
 		}
     }
