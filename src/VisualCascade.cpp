@@ -4,6 +4,7 @@
 #include <opencv2/imgproc.hpp>
 #include <opencv2/highgui.hpp>
 #include <iostream>
+#include <sstream>
 #include "VisualHaar.hpp"
 
 using namespace cv;
@@ -52,16 +53,32 @@ void VisualCascade::detectMultiScale(InputArray showImage, InputArray _image, st
 	}
 }
 
-void VisualCascade::show(int x, int y, Size windowSize, Size ssz, bool keep)
+void VisualCascade::setWindow(int x, int y, Size detectWindowSize, Size ssz)
+{
+	Size showWindowSize(static_cast<int>(mShowScale * detectWindowSize.width), static_cast<int>(mShowScale * detectWindowSize.height));
+	int xOffset = (mProgress.cols - showWindowSize.width)  * x / ssz.width;
+	int yOffset = (mProgress.rows - showWindowSize.height) * y / ssz.height;
+	mWindow = Rect(Point(xOffset, yOffset), showWindowSize);
+}
+
+void VisualCascade::show(const vector<int>& branches)
 {
 	Mat result;
-	Size showWindow(static_cast<int>(mShowScale * windowSize.width), static_cast<int>(mShowScale * windowSize.height));
-	int xOffset = (mProgress.cols - showWindow.width)  * x / ssz.width;
-	int yOffset = (mProgress.rows - showWindow.height) * y / ssz.height;
-	//cout << ssz << " " << x << " " << xOffset << endl;
-	if (keep) rectangle(mProgress, Rect(Point(xOffset, yOffset), showWindow), Scalar(0, 255, 0));
 	mProgress.copyTo(result);
-	rectangle(result, Rect(Point(xOffset, yOffset), showWindow), Scalar(0, 0, 255), 2);
+	rectangle(result, mWindow, Scalar(0, 0, 255), 2);
+	stringstream branchStream;
+	branchStream << "Branch: ";
+	for (unsigned index = 0; index < branches.size(); index++)
+	{
+		if (index > 0) branchStream << "-";
+		branchStream << branches[index];
+	}
+	putText(result, branchStream.str(), Point(mWindow.x, mWindow.y + mWindow.height + 12), CV_FONT_HERSHEY_PLAIN, 1, Scalar(0, 0, 255));
 	imshow(mWindowName, result);
 	waitKey(1);
+}
+
+void VisualCascade::keepWindow()
+{
+	rectangle(mProgress, mWindow, Scalar(0, 255, 0));
 }

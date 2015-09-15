@@ -2,6 +2,7 @@
 #define VISUAL_CASCADE_HPP
 
 #include "objdetect/cascadedetect.hpp"
+#include <vector>
 
 class VisualCascade : public cv::CascadeClassifierImpl
 {
@@ -15,13 +16,16 @@ public:
 		cv::Size minSize = cv::Size(),
 		cv::Size maxSize = cv::Size());
 
-	void show(int x, int y, cv::Size windowSize, cv::Size ssz, bool keep);
+	void setWindow(int x, int y, cv::Size windowSize, cv::Size ssz);
+	void keepWindow();
+	void show(const std::vector<int>& branches);
 
 	static std::string mWindowName;
 
 protected:
 	cv::Mat mProgress;
 	double mShowScale;
+	cv::Rect mWindow;
 };
 
 #endif

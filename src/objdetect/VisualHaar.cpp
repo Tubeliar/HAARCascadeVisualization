@@ -608,7 +608,7 @@ double icvEvalHidHaarClassifier( CvHidHaarClassifier* classifier,
 
 static int
 viscasRunHaarClassifierCascadeSum( const CvHaarClassifierCascade* _cascade,
-                               CvPoint pt, double& stage_sum, int start_stage )
+                               CvPoint pt, double& stage_sum, int start_stage, VisualCascade* pVisCas )
 {
 #  ifdef CV_HAAR_USE_SSE
     bool haveSSE2 = cv::checkHardwareSupport(CV_CPU_SSE2);
@@ -642,14 +642,16 @@ viscasRunHaarClassifierCascadeSum( const CvHaarClassifierCascade* _cascade,
         variance_norm_factor = std::sqrt(variance_norm_factor);
     else
         variance_norm_factor = 1.;
-
     if( cascade->is_tree )
     {
+		std::vector<int> branches;
+		branches.push_back(start_stage);
         CvHidHaarStageClassifier* ptr = cascade->stage_classifier;
         assert( start_stage == 0 );
 
         while( ptr )
         {
+			pVisCas->show(branches);
             stage_sum = 0.0;
             j = 0;
             for( ; j < ptr->count; j++ )
@@ -659,68 +661,27 @@ viscasRunHaarClassifierCascadeSum( const CvHaarClassifierCascade* _cascade,
 
             if( stage_sum >= ptr->threshold )
             {
+				branches.push_back(0);
                 ptr = ptr->child;
             }
             else
             {
-                while( ptr && ptr->next == NULL ) ptr = ptr->parent;
+				while (ptr && ptr->next == NULL)
+				{
+					branches.pop_back();
+					ptr = ptr->parent;
+				}
                 if( ptr == NULL )
                     return 0;
+				branches[branches.size() - 1] = branches.back() + 1;
                 ptr = ptr->next;
             }
         }
     }
     else if( cascade->isStumpBased )
     {
+		std::cout << "Stump based cascade not visualised" << std::endl;
 #ifdef CV_HAAR_USE_SSE //old SSE optimization
-        if(haveSSE2)
-        {
-            for( i = start_stage; i < cascade->count; i++ )
-            {
-                __m128d vstage_sum = _mm_setzero_pd();
-                if( cascade->stage_classifier[i].two_rects )
-                {
-                    for( j = 0; j < cascade->stage_classifier[i].count; j++ )
-                    {
-                        CvHidHaarClassifier* classifier = cascade->stage_classifier[i].classifier + j;
-                        CvHidHaarTreeNode* node = classifier->node;
-
-                        // ayasin - NHM perf optim. Avoid use of costly flaky jcc
-                        __m128d t = _mm_set_sd(node->threshold*variance_norm_factor);
-                        __m128d a = _mm_set_sd(classifier->alpha[0]);
-                        __m128d b = _mm_set_sd(classifier->alpha[1]);
-                        __m128d sum = _mm_set_sd(calc_sum(node->feature.rect[0],p_offset) * node->feature.rect[0].weight +
-                                                 calc_sum(node->feature.rect[1],p_offset) * node->feature.rect[1].weight);
-                        t = _mm_cmpgt_sd(t, sum);
-                        vstage_sum = _mm_add_sd(vstage_sum, _mm_blendv_pd(b, a, t));
-                    }
-                }
-                else
-                {
-                    for( j = 0; j < cascade->stage_classifier[i].count; j++ )
-                    {
-                        CvHidHaarClassifier* classifier = cascade->stage_classifier[i].classifier + j;
-                        CvHidHaarTreeNode* node = classifier->node;
-                        // ayasin - NHM perf optim. Avoid use of costly flaky jcc
-                        __m128d t = _mm_set_sd(node->threshold*variance_norm_factor);
-                        __m128d a = _mm_set_sd(classifier->alpha[0]);
-                        __m128d b = _mm_set_sd(classifier->alpha[1]);
-                        double _sum = calc_sum(node->feature.rect[0],p_offset) * node->feature.rect[0].weight;
-                        _sum += calc_sum(node->feature.rect[1],p_offset) * node->feature.rect[1].weight;
-                        if( node->feature.rect[2].p0 )
-                            _sum += calc_sum(node->feature.rect[2],p_offset) * node->feature.rect[2].weight;
-                        __m128d sum = _mm_set_sd(_sum);
-
-                        t = _mm_cmpgt_sd(t, sum);
-                        vstage_sum = _mm_add_sd(vstage_sum, _mm_blendv_pd(b, a, t));
-                    }
-                }
-                __m128d i_threshold = _mm_set1_pd(cascade->stage_classifier[i].threshold);
-                if( _mm_comilt_sd(vstage_sum, i_threshold) )
-                    return -i;
-            }
-        }
-        else
 #endif // AVX or SSE
         {
             for( i = start_stage; i < cascade->count; i++ )
@@ -759,6 +720,7 @@ viscasRunHaarClassifierCascadeSum( const CvHaarClassifierCascade* _cascade,
     }
     else
     {
+		std::cout << "Only tree type is supported" << std::endl;
         for( i = start_stage; i < cascade->count; i++ )
         {
             stage_sum = 0.0;
@@ -822,8 +784,9 @@ public:
 		{
 			for (x = 0; x < ssz.width; x += ystep)
 			{
+				mpVisCas->setWindow(x, y - y1, winSize, ssz);
 				double gypWeight;
-				int result = viscasRunHaarClassifierCascadeSum(cascade, cvPoint(x, y), gypWeight, 0);
+				int result = viscasRunHaarClassifierCascadeSum(cascade, cvPoint(x, y), gypWeight, 0, mpVisCas);
 				if (rejectLevels)
 				{
 					if (result == 1)
@@ -846,9 +809,9 @@ public:
 						vec->push_back(Rect(cvRound(x*factor), cvRound(y*factor),
 							winSize.width, winSize.height));
 						mtx->unlock();
+						mpVisCas->keepWindow();
 					}
 				}
-				mpVisCas->show(x, y - y1, winSize, ssz, result > 0);
 			}
 		}
     }
