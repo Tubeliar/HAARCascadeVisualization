@@ -2,6 +2,7 @@
 #define VISUAL_CASCADE_HPP
 
 #include "objdetect/cascadedetect.hpp"
+#include "objdetect/VisualHaar.hpp"
 #include <vector>
 
 class VisualCascade : public cv::CascadeClassifierImpl
@@ -16,9 +17,11 @@ public:
 		cv::Size minSize = cv::Size(),
 		cv::Size maxSize = cv::Size());
 
+	void setIntegral(cv::Size integralSize, cv::Mat sum, cv::Mat sqsum);
 	void setWindow(int x, int y, cv::Size windowSize, cv::Size ssz);
 	void keepWindow();
-	void show(const std::vector<int>& branches);
+	void show(const std::vector<int>& branches, int featureIndex, int nFeatures, CvHidHaarFeature& feature, int offset);
+	void drawFeature(cv::Mat image, CvHidHaarFeature& feature, int offset);
 
 	static std::string mWindowName;
 
@@ -26,6 +29,9 @@ protected:
 	cv::Mat mProgress;
 	double mShowScale;
 	cv::Rect mWindow;
+	cv::Size mIntegralSize;
+	cv::Mat mSum;
+	cv::Mat mSqsum;
 };
 
 #endif

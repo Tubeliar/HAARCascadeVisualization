@@ -41,11 +41,12 @@
 
 /* Haar features calculation */
 
+#include "VisualHaar.hpp"
 #include "precomp.hpp"
 #include "opencv2/imgproc/imgproc_c.h"
 #include "opencv2/objdetect/objdetect_c.h"
-#include <stdio.h>
 #include "../VisualCascade.hpp"
+#include <stdio.h>
 
 // Copy one function from private.hpp
 static inline void* cvAlignPtr(const void* ptr, int align = 32)
@@ -71,17 +72,6 @@ static inline void* cvAlignPtr(const void* ptr, int align = 32)
 
 typedef int sumtype;
 typedef double sqsumtype;
-
-typedef struct CvHidHaarFeature
-{
-    struct
-    {
-        sumtype *p0, *p1, *p2, *p3;
-        float weight;
-    }
-    rect[CV_HAAR_FEATURE_MAX];
-} CvHidHaarFeature;
-
 
 typedef struct CvHidHaarTreeNode
 {
@@ -651,11 +641,11 @@ viscasRunHaarClassifierCascadeSum( const CvHaarClassifierCascade* _cascade,
 
         while( ptr )
         {
-			pVisCas->show(branches);
             stage_sum = 0.0;
             j = 0;
             for( ; j < ptr->count; j++ )
             {
+				if (branches.size() < 3) pVisCas->show(branches, j, ptr->count, (ptr->classifier + j)->node->feature, p_offset);
                 stage_sum += icvEvalHidHaarClassifier( ptr->classifier + j, variance_norm_factor, p_offset );
             }
 
@@ -958,6 +948,7 @@ viscasHaarDetectObjectsForROC( const CvArr* _img,
 
             cvResize( img, &img1, CV_INTER_LINEAR );
             cvIntegral( &img1, &sum1, &sqsum1, _tilted );
+			pVisCas->setIntegral(sz, cvarrToMat(sum), cv::cvarrToMat(&sqsum1));
 
             int ystep = factor > 2 ? 1 : 2;
             const int LOCS_PER_THREAD = 1000;

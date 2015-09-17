@@ -5,7 +5,7 @@
 #include <opencv2/highgui.hpp>
 #include <iostream>
 #include <sstream>
-#include "VisualHaar.hpp"
+#include "objdetect/VisualHaar.hpp"
 
 using namespace cv;
 using namespace std;
@@ -53,6 +53,13 @@ void VisualCascade::detectMultiScale(InputArray showImage, InputArray _image, st
 	}
 }
 
+void VisualCascade::setIntegral(cv::Size integralSize, cv::Mat sum, cv::Mat sqsum)
+{
+	mIntegralSize = integralSize;
+	mSum = sum;
+	mSqsum = sqsum;
+}
+
 void VisualCascade::setWindow(int x, int y, Size detectWindowSize, Size ssz)
 {
 	Size showWindowSize(static_cast<int>(mShowScale * detectWindowSize.width), static_cast<int>(mShowScale * detectWindowSize.height));
@@ -61,21 +68,54 @@ void VisualCascade::setWindow(int x, int y, Size detectWindowSize, Size ssz)
 	mWindow = Rect(Point(xOffset, yOffset), showWindowSize);
 }
 
-void VisualCascade::show(const vector<int>& branches)
+void VisualCascade::show(const vector<int>& branches, int featureIndex, int nFeatures, CvHidHaarFeature& feature, int offset)
 {
 	Mat result;
 	mProgress.copyTo(result);
 	rectangle(result, mWindow, Scalar(0, 0, 255), 2);
-	stringstream branchStream;
-	branchStream << "Branch: ";
+	drawFeature(result, feature, offset);
+
+	stringstream description;
+	description << "Branch: ";
 	for (unsigned index = 0; index < branches.size(); index++)
 	{
-		if (index > 0) branchStream << "-";
-		branchStream << branches[index];
+		if (index > 0) description << "-";
+		description << branches[index];
 	}
-	putText(result, branchStream.str(), Point(mWindow.x, mWindow.y + mWindow.height + 12), CV_FONT_HERSHEY_PLAIN, 1, Scalar(0, 0, 255));
+	putText(result, description.str(), Point(mWindow.x, mWindow.y + mWindow.height + 12), CV_FONT_HERSHEY_PLAIN, 1, Scalar(0, 0, 255));
+	description.str("");
+	description << "Feature: " << featureIndex << " of " << nFeatures;
+	putText(result, description.str(), Point(mWindow.x, mWindow.y + mWindow.height + 24), CV_FONT_HERSHEY_PLAIN, 1, Scalar(0, 0, 255));
 	imshow(mWindowName, result);
 	waitKey(1);
+}
+
+void VisualCascade::drawFeature(cv::Mat image, CvHidHaarFeature& feature, int offset)
+{
+	//cout << mIntegralSize << " " << mSum.size() << " " << mSqsum.size() << endl;
+	for (int rectIndex = 0; rectIndex < CV_HAAR_FEATURE_MAX; rectIndex++)
+	{
+		HaarFeatureRect hfr = feature.rect[rectIndex];
+		if (!hfr.p0) break;
+		int stride = mIntegralSize.width + 1;
+
+		int topLIndex = hfr.p0 - reinterpret_cast<sumtype*>(mSum.data); // Use to draw
+		int topRIndex = hfr.p1 - reinterpret_cast<sumtype*>(mSum.data); // Use to check
+		int botLIndex = hfr.p2 - reinterpret_cast<sumtype*>(mSum.data); // Use to check
+		int botRIndex = hfr.p3 - reinterpret_cast<sumtype*>(mSum.data); // Use to draw
+
+		// Perform checks so make sure we have the right stride
+		if (topRIndex % stride != botRIndex % stride) cout << "p1 misaligned x" << endl;
+		if (topRIndex / stride != topLIndex / stride) cout << "p1 misaligned y" << endl;
+		if (botLIndex % stride != topLIndex % stride) cout << "p2 misaligned x" << endl;
+		if (botLIndex / stride != botRIndex / stride) cout << "p1 misaligned y" << endl;
+		Point topL((topLIndex % stride) * mWindow.width / mIntegralSize.width, (topLIndex / stride) * mWindow.height / mIntegralSize.height);
+		Point botR((botRIndex % stride) * mWindow.width / mIntegralSize.width, (botRIndex / stride) * mWindow.height / mIntegralSize.height);
+		topL += mWindow.tl();
+		botR += mWindow.tl();
+		Scalar color = hfr.weight > 0 ? Scalar(255, 255, 255) : Scalar(0, 0, 0);
+		rectangle(image, Rect(topL, botR), color, CV_FILLED);
+	}
 }
 
 void VisualCascade::keepWindow()
