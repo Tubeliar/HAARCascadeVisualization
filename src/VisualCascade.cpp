@@ -31,6 +31,9 @@ void VisualCascade::detectMultiScale(InputArray showImage, InputArray _image, st
 	std::vector<int> numDetections;
 	if (isOldFormatCascade())
 	{
+		CvHaarClassifierCascade* oldC = static_cast<CvHaarClassifierCascade*>(getOldCascade());
+		mOriginalWindowSize = Size(oldC->orig_window_size);
+
 		std::vector<CvAvgComp> vecAvgComp;
 
 		MemStorage storage(cvCreateMemStorage(0));
@@ -68,12 +71,12 @@ void VisualCascade::setWindow(int x, int y, Size detectWindowSize, Size ssz)
 	mWindow = Rect(Point(xOffset, yOffset), showWindowSize);
 }
 
-void VisualCascade::show(const vector<int>& branches, int featureIndex, int nFeatures, CvHidHaarFeature& feature, int offset)
+void VisualCascade::show(const vector<int>& branches, int featureIndex, int nFeatures, CvHidHaarFeature& feature)
 {
 	Mat result;
 	mProgress.copyTo(result);
 	rectangle(result, mWindow, Scalar(0, 0, 255), 2);
-	drawFeature(result, feature, offset);
+	drawFeature(result, feature);
 
 	stringstream description;
 	description << "Branch: ";
@@ -90,7 +93,7 @@ void VisualCascade::show(const vector<int>& branches, int featureIndex, int nFea
 	waitKey(1);
 }
 
-void VisualCascade::drawFeature(cv::Mat image, CvHidHaarFeature& feature, int offset)
+void VisualCascade::drawFeature(cv::Mat image, CvHidHaarFeature& feature)
 {
 	//cout << mIntegralSize << " " << mSum.size() << " " << mSqsum.size() << endl;
 	for (int rectIndex = 0; rectIndex < CV_HAAR_FEATURE_MAX; rectIndex++)
@@ -109,8 +112,11 @@ void VisualCascade::drawFeature(cv::Mat image, CvHidHaarFeature& feature, int of
 		if (topRIndex / stride != topLIndex / stride) cout << "p1 misaligned y" << endl;
 		if (botLIndex % stride != topLIndex % stride) cout << "p2 misaligned x" << endl;
 		if (botLIndex / stride != botRIndex / stride) cout << "p1 misaligned y" << endl;
-		Point topL((topLIndex % stride) * mWindow.width / mIntegralSize.width, (topLIndex / stride) * mWindow.height / mIntegralSize.height);
-		Point botR((botRIndex % stride) * mWindow.width / mIntegralSize.width, (botRIndex / stride) * mWindow.height / mIntegralSize.height);
+
+		double xScale = mWindow.width  / static_cast<double>(mOriginalWindowSize.width);
+		double yScale = mWindow.height / static_cast<double>(mOriginalWindowSize.height);
+		Point topL((topLIndex % stride) * xScale, (topLIndex / stride) * yScale);
+		Point botR((botRIndex % stride) * xScale, (botRIndex / stride) * yScale);
 		topL += mWindow.tl();
 		botR += mWindow.tl();
 		Scalar color = hfr.weight > 0 ? Scalar(255, 255, 255) : Scalar(0, 0, 0);

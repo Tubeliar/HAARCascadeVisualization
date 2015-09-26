@@ -20,8 +20,8 @@ public:
 	void setIntegral(cv::Size integralSize, cv::Mat sum, cv::Mat sqsum);
 	void setWindow(int x, int y, cv::Size windowSize, cv::Size ssz);
 	void keepWindow();
-	void show(const std::vector<int>& branches, int featureIndex, int nFeatures, CvHidHaarFeature& feature, int offset);
-	void drawFeature(cv::Mat image, CvHidHaarFeature& feature, int offset);
+	void show(const std::vector<int>& branches, int featureIndex, int nFeatures, CvHidHaarFeature& feature);
+	void drawFeature(cv::Mat image, CvHidHaarFeature& feature);
 
 	static std::string mWindowName;
 
@@ -32,6 +32,7 @@ protected:
 	cv::Size mIntegralSize;
 	cv::Mat mSum;
 	cv::Mat mSqsum;
+	cv::Size mOriginalWindowSize;
 };
 
 #endif

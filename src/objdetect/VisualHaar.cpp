@@ -645,7 +645,7 @@ viscasRunHaarClassifierCascadeSum( const CvHaarClassifierCascade* _cascade,
             j = 0;
             for( ; j < ptr->count; j++ )
             {
-				if (branches.size() < 3) pVisCas->show(branches, j, ptr->count, (ptr->classifier + j)->node->feature, p_offset);
+				if (branches.size() < 3) pVisCas->show(branches, j, ptr->count, (ptr->classifier + j)->node->feature);
                 stage_sum += icvEvalHidHaarClassifier( ptr->classifier + j, variance_norm_factor, p_offset );
             }
 
