@@ -29,19 +29,23 @@ void detectAndDraw( UMat& img, Mat& canvas, VisualCascade& cascade, double detec
 
 string cascadeName = "../../data/haarcascades/haarcascade_frontalface_alt.xml";
 
+bool findOpt(const char * command, const string option, const char *& argument)
+{
+	size_t opLen = option.length();
+	if (option.compare(0, opLen, command, opLen) == 0)
+	{
+		argument = command + opLen;
+		return true;
+	}
+	argument = command;
+	return false;
+}
+
 int main( int argc, const char** argv )
 {
     VideoCapture capture;
     UMat frame, image;
     Mat canvas;
-	const string detectScaleOpt = "--detectscale=";
-	size_t detectScaleOptLen = detectScaleOpt.length();
-	const string showScaleOpt = "--showscale=";
-	size_t showScaleOptLen = showScaleOpt.length();
-	const string scaleFactorOpt = "--scalefactor=";
-	size_t scaleFactorOptLen = scaleFactorOpt.length();
-    const string cascadeOpt = "--cascade=";
-    size_t cascadeOptLen = cascadeOpt.length();
     String inputName;
 
     VisualCascade cascade;
@@ -49,37 +53,35 @@ int main( int argc, const char** argv )
 	double showScale = 1;
 	double factor = 1.5;
 
+	const char * argument = 0;
+
     for( int i = 1; i < argc; i++ )
     {
-        if( cascadeOpt.compare( 0, cascadeOptLen, argv[i], cascadeOptLen ) == 0 )
+        if( findOpt(argv[i], "--cascade=", argument) )
         {
-            cascadeName.assign( argv[i] + cascadeOptLen );
+            cascadeName.assign( argument );
             cout << "cascadeName = " << cascadeName << endl;
         }
-		else if (detectScaleOpt.compare(0, detectScaleOptLen, argv[i], detectScaleOptLen) == 0)
+		else if ( findOpt(argv[i], "--detectscale=", argument) )
 		{
-			if (!sscanf(argv[i] + detectScaleOptLen, "%lf", &detectScale) || detectScale > 1)
-				detectScale = 1;
+			if (!sscanf(argument, "%lf", &detectScale) || detectScale > 1) detectScale = 1;
 			cout << "detection scale = " << detectScale << endl;
 		}
-		else if (showScaleOpt.compare(0, showScaleOptLen, argv[i], showScaleOptLen) == 0)
+		else if ( findOpt(argv[i], "--showscale=", argument) )
 		{
-			if (!sscanf(argv[i] + showScaleOptLen, "%lf", &showScale))
-				showScale = 1;
+			if (!sscanf(argument, "%lf", &showScale)) showScale = 1;
 			cout << "detection scale = " << showScale << endl;
 		}
-		else if (scaleFactorOpt.compare(0, scaleFactorOptLen, argv[i], scaleFactorOptLen) == 0)
+		else if ( findOpt(argv[i], "--scalefactor=", argument) )
 		{
-			if (!sscanf(argv[i] + scaleFactorOptLen, "%lf", &factor) || factor <= 1)
-				factor = 1.5;
+			if (!sscanf(argument, "%lf", &factor) || factor <= 1) factor = 1.5;
 			cout << "scale factor = " << factor << endl;
 		}
         else if( argv[i][0] == '-' )
         {
             cerr << "WARNING: Unknown option %s" << argv[i] << endl;
         }
-        else
-            inputName = argv[i];
+        else inputName = argv[i];
     }
 
     if( !cascade.load( cascadeName ) )
