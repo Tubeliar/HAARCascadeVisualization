@@ -14,18 +14,20 @@
 using namespace std;
 using namespace cv;
 
-static void help()
+static void help(const char * executableName)
 {
     cout << "Usage:\n"
-            "./facedetect [--cascade=<cascade_path> this is the primary trained classifier such as frontal face]\n"
+	           "./" << executableName << " <image filename>\n"
+	           "   <--cascade=<cascade_path> this is the primary trained classifier such as frontal face>\n"
                "   [--detectscale=<image scale to perform the detection. Smaller scales detect faster and coarser>]\n"
                "   [--showscale=<image scale to do the visualisation at. This will not affect the detection>]\n"
-               "   [--scalefactor=<factor greater than 1. Bigger numbers cause a coarser bnt faster search>]\n"
-               "   [filename]\n\n"
+               "   [--scalefactor=<Multiscale step. Bigger than 1. Bigger numbers cause a coarser but faster search>]\n"
+               "   [--depth=<cascade depth to visualise. Deeper levels will still be performed but not shown>]\n"
+               "\n"
             "\tUsing OpenCV version " << CV_VERSION << "\n" << endl;
 }
 
-void detectAndDraw( UMat& img, Mat& canvas, VisualCascade& cascade, double detectScale, double showScale, double factor );
+void detectAndDraw( UMat& img, Mat& canvas, VisualCascade& cascade, double detectScale, double showScale, double factor, int depth );
 
 string cascadeName = "../../data/haarcascades/haarcascade_frontalface_alt.xml";
 
@@ -52,6 +54,7 @@ int main( int argc, const char** argv )
 	double detectScale = 1;
 	double showScale = 1;
 	double factor = 1.5;
+	int depth = 3;
 
 	const char * argument = 0;
 
@@ -72,10 +75,15 @@ int main( int argc, const char** argv )
 			if (!sscanf(argument, "%lf", &showScale)) showScale = 1;
 			cout << "detection scale = " << showScale << endl;
 		}
-		else if ( findOpt(argv[i], "--scalefactor=", argument) )
+		else if (findOpt(argv[i], "--scalefactor=", argument))
 		{
 			if (!sscanf(argument, "%lf", &factor) || factor <= 1) factor = 1.5;
 			cout << "scale factor = " << factor << endl;
+		}
+		else if (findOpt(argv[i], "--depth=", argument))
+		{
+			if (!sscanf(argument, "%d", &depth)) depth = 3;
+			cout << "visualise cascade depth = " << depth << endl;
 		}
         else if( argv[i][0] == '-' )
         {
@@ -87,7 +95,7 @@ int main( int argc, const char** argv )
     if( !cascade.load( cascadeName ) )
     {
         cerr << "ERROR: Could not load classifier cascade" << endl;
-        help();
+        help(argv[0]);
         return -1;
     }
 
@@ -95,21 +103,21 @@ int main( int argc, const char** argv )
     if( image.empty() )
     {
 		cout << "Could not read " << inputName << endl;
-		help();
+		help(argv[0]);
 		return -1;
     }
 
 	cout << "Detecting face(s) in " << inputName << endl;
     if( !image.empty() )
     {
-        detectAndDraw( image, canvas, cascade, detectScale, showScale, factor );
+        detectAndDraw( image, canvas, cascade, detectScale, showScale, factor, depth );
         waitKey(0);
     }
 
     return 0;
 }
 
-void detectAndDraw( UMat& img, Mat& canvas, VisualCascade& cascade, double detectScale, double showScale, double factor )
+void detectAndDraw( UMat& img, Mat& canvas, VisualCascade& cascade, double detectScale, double showScale, double factor , int depth)
 {
     int i = 0;
     double scale=1;
@@ -132,13 +140,15 @@ void detectAndDraw( UMat& img, Mat& canvas, VisualCascade& cascade, double detec
     cvtColor( smallImg, gray, COLOR_BGR2GRAY );
     equalizeHist( gray, gray );
 
+	int minNeighbours = 3;
+	int flags = 0
+		//|CASCADE_FIND_BIGGEST_OBJECT
+		//|CASCADE_DO_ROUGH_SEARCH
+		| CASCADE_SCALE_IMAGE
+		;
     cascade.detectMultiScale(visualisationImage, gray, faces,
-        showScale / detectScale, factor, 3, 0
-        //|CASCADE_FIND_BIGGEST_OBJECT
-        //|CASCADE_DO_ROUGH_SEARCH
-        |CASCADE_SCALE_IMAGE
-        ,
-        Size(30, 30) );
+        showScale / detectScale, depth, factor, minNeighbours, 
+        flags, Size(30, 30) );
     smallImg.copyTo(canvas);
 
     for( vector<Rect>::const_iterator r = faces.begin(); r != faces.end(); r++, i++ )

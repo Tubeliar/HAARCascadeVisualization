@@ -600,10 +600,6 @@ static int
 viscasRunHaarClassifierCascadeSum( const CvHaarClassifierCascade* _cascade,
                                CvPoint pt, double& stage_sum, int start_stage, VisualCascade* pVisCas )
 {
-#  ifdef CV_HAAR_USE_SSE
-    bool haveSSE2 = cv::checkHardwareSupport(CV_CPU_SSE2);
-#  endif
-
     int p_offset, pq_offset;
     int i, j;
     double mean, variance_norm_factor;
@@ -638,6 +634,7 @@ viscasRunHaarClassifierCascadeSum( const CvHaarClassifierCascade* _cascade,
 		branches.push_back(start_stage);
         CvHidHaarStageClassifier* ptr = cascade->stage_classifier;
         assert( start_stage == 0 );
+		int depthLimit = pVisCas->getDepth();
 
         while( ptr )
         {
@@ -645,7 +642,7 @@ viscasRunHaarClassifierCascadeSum( const CvHaarClassifierCascade* _cascade,
             j = 0;
             for( ; j < ptr->count; j++ )
             {
-				if (branches.size() < 3) pVisCas->show(branches, j, ptr->count, (ptr->classifier + j)->node->feature);
+				if (static_cast<int>(branches.size()) < depthLimit) pVisCas->show(branches, j, ptr->count, (ptr->classifier + j)->node->feature);
                 stage_sum += icvEvalHidHaarClassifier( ptr->classifier + j, variance_norm_factor, p_offset );
             }
 
@@ -670,10 +667,8 @@ viscasRunHaarClassifierCascadeSum( const CvHaarClassifierCascade* _cascade,
     }
     else if( cascade->isStumpBased )
     {
-		std::cout << "Stump based cascade not visualised" << std::endl;
-#ifdef CV_HAAR_USE_SSE //old SSE optimization
-#endif // AVX or SSE
         {
+			int depthLimit = pVisCas->getDepth();
             for( i = start_stage; i < cascade->count; i++ )
             {
                 stage_sum = 0.0;
@@ -687,6 +682,7 @@ viscasRunHaarClassifierCascadeSum( const CvHaarClassifierCascade* _cascade,
                         double sum = calc_sum(node->feature.rect[0],p_offset) * node->feature.rect[0].weight;
                         sum += calc_sum(node->feature.rect[1],p_offset) * node->feature.rect[1].weight;
                         stage_sum += classifier->alpha[sum >= t];
+						if (i < depthLimit) pVisCas->show(i, j, cascade->stage_classifier[i].count, node->feature);
                     }
                 }
                 else
@@ -701,11 +697,13 @@ viscasRunHaarClassifierCascadeSum( const CvHaarClassifierCascade* _cascade,
                         if( node->feature.rect[2].p0 )
                             sum += calc_sum(node->feature.rect[2],p_offset) * node->feature.rect[2].weight;
                         stage_sum += classifier->alpha[sum >= t];
+						if (i < depthLimit) pVisCas->show(i, j, cascade->stage_classifier[i].count, node->feature);
                     }
                 }
                 if( stage_sum < cascade->stage_classifier[i].threshold )
                     return -i;
             }
+			pVisCas->keepWindow();
         }
     }
     else

@@ -16,10 +16,11 @@ struct getNeighbors { int operator ()(const CvAvgComp& e) const { return e.neigh
 string VisualCascade::mWindowName = "Cascade Visualiser";
 
 void VisualCascade::detectMultiScale(InputArray showImage, InputArray _image, std::vector<Rect>& objects,
-	double showScale, double scaleFactor, int minNeighbors,
+	double showScale, int depth, double scaleFactor, int minNeighbors,
 	int flags, Size minObjectSize, Size maxObjectSize)
 {
 	mShowScale = showScale;
+	mVisualisationDepth = depth;
 	std::vector<int> rejectLevels;
 	std::vector<double> levelWeights;
 	mProgress = showImage.getMat();
@@ -56,6 +57,11 @@ void VisualCascade::detectMultiScale(InputArray showImage, InputArray _image, st
 	}
 }
 
+int VisualCascade::getDepth() const
+{
+	return mVisualisationDepth;
+}
+
 void VisualCascade::setIntegral(cv::Size integralSize, cv::Mat sum, cv::Mat sqsum)
 {
 	mIntegralSize = integralSize;
@@ -73,11 +79,6 @@ void VisualCascade::setWindow(int x, int y, Size detectWindowSize, Size ssz)
 
 void VisualCascade::show(const vector<int>& branches, int featureIndex, int nFeatures, CvHidHaarFeature& feature)
 {
-	Mat result;
-	mProgress.copyTo(result);
-	rectangle(result, mWindow, Scalar(0, 0, 255), 2);
-	drawFeature(result, feature);
-
 	stringstream description;
 	description << "Branch: ";
 	for (unsigned index = 0; index < branches.size(); index++)
@@ -85,8 +86,25 @@ void VisualCascade::show(const vector<int>& branches, int featureIndex, int nFea
 		if (index > 0) description << "-";
 		description << branches[index];
 	}
-	putText(result, description.str(), Point(mWindow.x, mWindow.y + mWindow.height + 12), CV_FONT_HERSHEY_PLAIN, 1, Scalar(0, 0, 255));
-	description.str("");
+	show(description.str(), featureIndex, nFeatures, feature);
+}
+
+void VisualCascade::show(int stage, int featureIndex, int nFeatures, CvHidHaarFeature& feature)
+{
+	stringstream description;
+	description << "Stage: " << stage;
+	show(description.str(), featureIndex, nFeatures, feature);
+}
+
+void VisualCascade::show(string caption, int featureIndex, int nFeatures, CvHidHaarFeature& feature)
+{
+	Mat result;
+	mProgress.copyTo(result);
+	rectangle(result, mWindow, Scalar(0, 0, 255), 2);
+	drawFeature(result, feature);
+
+	putText(result, caption, Point(mWindow.x, mWindow.y + mWindow.height + 12), CV_FONT_HERSHEY_PLAIN, 1, Scalar(0, 0, 255));
+	stringstream description;
 	description << "Feature: " << featureIndex << " of " << nFeatures;
 	putText(result, description.str(), Point(mWindow.x, mWindow.y + mWindow.height + 24), CV_FONT_HERSHEY_PLAIN, 1, Scalar(0, 0, 255));
 	imshow(mWindowName, result);
@@ -95,7 +113,6 @@ void VisualCascade::show(const vector<int>& branches, int featureIndex, int nFea
 
 void VisualCascade::drawFeature(cv::Mat image, CvHidHaarFeature& feature)
 {
-	//cout << mIntegralSize << " " << mSum.size() << " " << mSqsum.size() << endl;
 	for (int rectIndex = 0; rectIndex < CV_HAAR_FEATURE_MAX; rectIndex++)
 	{
 		HaarFeatureRect hfr = feature.rect[rectIndex];
@@ -115,8 +132,8 @@ void VisualCascade::drawFeature(cv::Mat image, CvHidHaarFeature& feature)
 
 		double xScale = mWindow.width  / static_cast<double>(mOriginalWindowSize.width);
 		double yScale = mWindow.height / static_cast<double>(mOriginalWindowSize.height);
-		Point topL((topLIndex % stride) * xScale, (topLIndex / stride) * yScale);
-		Point botR((botRIndex % stride) * xScale, (botRIndex / stride) * yScale);
+		Point topL(static_cast<int>((topLIndex % stride) * xScale), static_cast<int>((topLIndex / stride) * yScale));
+		Point botR(static_cast<int>((botRIndex % stride) * xScale), static_cast<int>((botRIndex / stride) * yScale));
 		topL += mWindow.tl();
 		botR += mWindow.tl();
 		Scalar color = hfr.weight > 0 ? Scalar(255, 255, 255) : Scalar(0, 0, 0);
