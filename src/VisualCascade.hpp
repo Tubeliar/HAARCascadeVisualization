@@ -26,6 +26,7 @@ public:
 	void show(int stage, int featureIndex, int nFeatures, CvHidHaarFeature& feature);
 	void show(std::string caption, int featureIndex, int nFeatures, CvHidHaarFeature& feature);
 	void drawFeature(cv::Mat image, CvHidHaarFeature& feature);
+	cv::Mat getProgressImage();
 
 	static std::string mWindowName;
 

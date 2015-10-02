@@ -27,7 +27,7 @@ static void help(const char * executableName)
             "\tUsing OpenCV version " << CV_VERSION << "\n" << endl;
 }
 
-void detectAndDraw( UMat& img, Mat& canvas, VisualCascade& cascade, double detectScale, double showScale, double factor, int depth );
+void detectAndDraw( UMat& img, VisualCascade& cascade, double detectScale, double showScale, double factor, int depth );
 
 string cascadeName = "../../data/haarcascades/haarcascade_frontalface_alt.xml";
 
@@ -47,16 +47,17 @@ int main( int argc, const char** argv )
 {
     VideoCapture capture;
     UMat frame, image;
-    Mat canvas;
     String inputName;
 
     VisualCascade cascade;
 	double detectScale = 1;
 	double showScale = 1;
-	double factor = 1.5;
-	int depth = 3;
+	double factor = 1.25;
+	int depth = 4;
 
 	const char * argument = 0;
+	double doubleValue;
+	int intValue;
 
     for( int i = 1; i < argc; i++ )
     {
@@ -67,22 +68,22 @@ int main( int argc, const char** argv )
         }
 		else if ( findOpt(argv[i], "--detectscale=", argument) )
 		{
-			if (!sscanf(argument, "%lf", &detectScale) || detectScale > 1) detectScale = 1;
+			if (sscanf(argument, "%lf", &doubleValue)) detectScale = doubleValue;
 			cout << "detection scale = " << detectScale << endl;
 		}
 		else if ( findOpt(argv[i], "--showscale=", argument) )
 		{
-			if (!sscanf(argument, "%lf", &showScale)) showScale = 1;
+			if (sscanf(argument, "%lf", &doubleValue)) showScale = doubleValue;
 			cout << "detection scale = " << showScale << endl;
 		}
 		else if (findOpt(argv[i], "--scalefactor=", argument))
 		{
-			if (!sscanf(argument, "%lf", &factor) || factor <= 1) factor = 1.5;
+			if (sscanf(argument, "%lf", &doubleValue) && doubleValue > 1) factor = doubleValue;
 			cout << "scale factor = " << factor << endl;
 		}
 		else if (findOpt(argv[i], "--depth=", argument))
 		{
-			if (!sscanf(argument, "%d", &depth)) depth = 3;
+			if (sscanf(argument, "%d", &intValue)) depth = intValue;
 			cout << "visualise cascade depth = " << depth << endl;
 		}
         else if( argv[i][0] == '-' )
@@ -110,17 +111,17 @@ int main( int argc, const char** argv )
 	cout << "Detecting face(s) in " << inputName << endl;
     if( !image.empty() )
     {
-        detectAndDraw( image, canvas, cascade, detectScale, showScale, factor, depth );
+        detectAndDraw( image, cascade, detectScale, showScale, factor, depth );
         waitKey(0);
     }
 
     return 0;
 }
 
-void detectAndDraw( UMat& img, Mat& canvas, VisualCascade& cascade, double detectScale, double showScale, double factor , int depth)
+void detectAndDraw( UMat& img, VisualCascade& cascade, double detectScale, double showScale, double factor , int depth)
 {
     int i = 0;
-    double scale=1;
+	double scale = showScale / detectScale;
     vector<Rect> faces, faces2;
     const static Scalar colors[] =
     {
@@ -149,7 +150,7 @@ void detectAndDraw( UMat& img, Mat& canvas, VisualCascade& cascade, double detec
     cascade.detectMultiScale(visualisationImage, gray, faces,
         showScale / detectScale, depth, factor, minNeighbours, 
         flags, Size(30, 30) );
-    smallImg.copyTo(canvas);
+	Mat canvas = cascade.getProgressImage();
 
     for( vector<Rect>::const_iterator r = faces.begin(); r != faces.end(); r++, i++ )
     {
@@ -171,7 +172,5 @@ void detectAndDraw( UMat& img, Mat& canvas, VisualCascade& cascade, double detec
                        Point(cvRound((r->x + r->width-1)*scale), cvRound((r->y + r->height-1)*scale)),
                        color, 3, 8, 0);
     }
-	destroyWindow(VisualCascade::mWindowName);
-	namedWindow("result", 1);
-    imshow( "result", canvas );
+    imshow(VisualCascade::mWindowName, canvas );
 }

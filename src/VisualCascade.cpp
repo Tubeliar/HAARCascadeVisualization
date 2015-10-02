@@ -141,6 +141,11 @@ void VisualCascade::drawFeature(cv::Mat image, CvHidHaarFeature& feature)
 	}
 }
 
+Mat VisualCascade::getProgressImage()
+{
+	return mProgress;
+}
+
 void VisualCascade::keepWindow()
 {
 	rectangle(mProgress, mWindow, Scalar(0, 255, 0));
