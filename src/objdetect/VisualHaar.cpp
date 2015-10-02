@@ -708,7 +708,7 @@ viscasRunHaarClassifierCascadeSum( const CvHaarClassifierCascade* _cascade,
     }
     else
     {
-		std::cout << "Only tree type is supported" << std::endl;
+		int depthLimit = pVisCas->getDepth();
         for( i = start_stage; i < cascade->count; i++ )
         {
             stage_sum = 0.0;
@@ -719,11 +719,13 @@ viscasRunHaarClassifierCascadeSum( const CvHaarClassifierCascade* _cascade,
                 stage_sum += icvEvalHidHaarClassifier(
                     cascade->stage_classifier[i].classifier + k,
                     variance_norm_factor, p_offset );
+				if (i < depthLimit) pVisCas->show(i, k, cascade->stage_classifier[i].count, (cascade->stage_classifier[i].classifier + k)->node->feature);
             }
 
             if( stage_sum < cascade->stage_classifier[i].threshold )
                 return -i;
         }
+		pVisCas->keepWindow();
     }
     return 1;
 }
