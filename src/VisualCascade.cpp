@@ -102,13 +102,28 @@ void VisualCascade::show(string caption, int featureIndex, int nFeatures, CvHidH
 	mProgress.copyTo(result);
 	rectangle(result, mWindow, Scalar(0, 0, 255), 2);
 	drawFeature(result, feature);
-
-	putText(result, caption, Point(mWindow.x, mWindow.y + mWindow.height + 12), CV_FONT_HERSHEY_PLAIN, 1, Scalar(0, 0, 255));
+	
+	int x = mWindow.x;
+	int y = min(mWindow.y + mWindow.height + 12, result.rows - 24);
+	borderText(result, caption, Point(x, y), CV_FONT_HERSHEY_PLAIN, 1, Scalar(0, 0, 255), Scalar(32, 32, 64));
 	stringstream description;
 	description << "Feature: " << featureIndex << " of " << nFeatures;
-	putText(result, description.str(), Point(mWindow.x, mWindow.y + mWindow.height + 24), CV_FONT_HERSHEY_PLAIN, 1, Scalar(0, 0, 255));
+	borderText(result, description.str(), Point(x, y + 12), CV_FONT_HERSHEY_PLAIN, 1, Scalar(0, 0, 255), Scalar(32, 32, 64));
 	imshow(mWindowName, result);
 	waitKey(1);
+}
+
+void VisualCascade::borderText(Mat& image, string text, Point origin, int font, double scale, Scalar colour, Scalar borderColour)
+{
+	for (int dy = -1; dy <= 1; dy++)
+	{
+		for (int dx = -1; dx <= 1; dx++)
+		{
+			if (dx == 0 && dy == 0) continue;
+			putText(image, text, Point(origin.x + dx, origin.y + dy), font, scale, borderColour);
+		}
+	}
+	putText(image, text, origin, font, scale, colour);
 }
 
 void VisualCascade::drawFeature(cv::Mat image, CvHidHaarFeature& feature)

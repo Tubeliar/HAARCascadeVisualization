@@ -19,7 +19,7 @@ static void help(const char * executableName)
     cout << "Usage:\n"
 	           "./" << executableName << " <image filename>\n"
 	           "   <--cascade=<cascade_path> this is the primary trained classifier such as frontal face>\n"
-               "   [--detectscale=<image scale to perform the detection. Smaller scales detect faster and coarser>]\n"
+               "   [--detectscale=<image scale to perform the detection. Since the detection is multiscale starting at a smaller scale just means stopping sooner>]\n"
                "   [--showscale=<image scale to do the visualisation at. This will not affect the detection>]\n"
                "   [--scalefactor=<Multiscale step. Bigger than 1. Bigger numbers cause a coarser but faster search>]\n"
                "   [--depth=<cascade depth to visualise. Deeper levels will still be performed but not shown>]\n"
@@ -52,7 +52,7 @@ int main( int argc, const char** argv )
     VisualCascade cascade;
 	double detectScale = 1;
 	double showScale = 1;
-	double factor = 1.25;
+	double factor = 1.3;
 	int depth = 4;
 
 	const char * argument = 0;

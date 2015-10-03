@@ -31,6 +31,7 @@ public:
 	static std::string mWindowName;
 
 protected:
+	void borderText(cv::Mat& image, std::string text, cv::Point origin, int font, double scale, cv::Scalar colour, cv::Scalar borderColour = cv::Scalar(0, 0, 0));
 	cv::Mat mProgress;
 	double mShowScale;
 	cv::Rect mWindow;
