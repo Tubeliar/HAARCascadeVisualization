@@ -4,6 +4,7 @@
 #include "objdetect/cascadedetect.hpp"
 #include "objdetect/VisualHaar.hpp"
 #include <vector>
+#include <opencv2/highgui.hpp>
 
 class VisualCascade : public cv::CascadeClassifierImpl
 {
@@ -22,11 +23,15 @@ public:
 	void setIntegral(cv::Size integralSize, cv::Mat sum, cv::Mat sqsum);
 	void setWindow(int x, int y, cv::Size windowSize, cv::Size ssz);
 	void keepWindow();
-	void show(const std::vector<int>& branches, int featureIndex, int nFeatures, CvHidHaarFeature& feature);
-	void show(int stage, int featureIndex, int nFeatures, CvHidHaarFeature& feature);
-	void show(std::string caption, int featureIndex, int nFeatures, CvHidHaarFeature& feature);
-	void drawFeature(cv::Mat image, CvHidHaarFeature& feature);
-	cv::Mat getProgressImage();
+	void show(const std::vector<int>& branches, int featureIndex, int nFeatures, const CvHidHaarFeature& feature);
+	void show(int stage, int featureIndex, int nFeatures, const CvHidHaarFeature& feature);
+	void show(std::string caption, int featureIndex, int nFeatures, const CvHidHaarFeature& feature);
+	void drawFeature(cv::Mat image, const CvHidHaarFeature& feature);
+	void setVideo(std::string videoFilename);
+	void setImagePath(std::string imagePath);
+	cv::Mat getProgressImage() const;;
+	bool isRecording() const;
+	void recordImage(const cv::Mat image);
 
 	static std::string mWindowName;
 
@@ -40,6 +45,10 @@ protected:
 	cv::Mat mSqsum;
 	cv::Size mOriginalWindowSize;
 	int mVisualisationDepth;
+	std::string mImagePath;
+	std::string mVideoPath;
+	cv::VideoWriter mOutVideo;
+	unsigned mFrameCounter;
 };
 
 #endif

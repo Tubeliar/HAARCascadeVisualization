@@ -5,6 +5,7 @@
 #include <opencv2/highgui.hpp>
 #include <iostream>
 #include <sstream>
+#include <iomanip>
 #include "objdetect/VisualHaar.hpp"
 
 using namespace cv;
@@ -62,6 +63,17 @@ int VisualCascade::getDepth() const
 	return mVisualisationDepth;
 }
 
+void VisualCascade::setImagePath(string path)
+{
+	mImagePath = path;
+	mFrameCounter = 0;
+}
+
+void VisualCascade::setVideo(string path)
+{
+	mVideoPath = path;
+}
+
 void VisualCascade::setIntegral(cv::Size integralSize, cv::Mat sum, cv::Mat sqsum)
 {
 	mIntegralSize = integralSize;
@@ -77,7 +89,7 @@ void VisualCascade::setWindow(int x, int y, Size detectWindowSize, Size ssz)
 	mWindow = Rect(Point(xOffset, yOffset), showWindowSize);
 }
 
-void VisualCascade::show(const vector<int>& branches, int featureIndex, int nFeatures, CvHidHaarFeature& feature)
+void VisualCascade::show(const vector<int>& branches, int featureIndex, int nFeatures, const CvHidHaarFeature& feature)
 {
 	stringstream description;
 	description << "Branch: ";
@@ -89,14 +101,14 @@ void VisualCascade::show(const vector<int>& branches, int featureIndex, int nFea
 	show(description.str(), featureIndex, nFeatures, feature);
 }
 
-void VisualCascade::show(int stage, int featureIndex, int nFeatures, CvHidHaarFeature& feature)
+void VisualCascade::show(int stage, int featureIndex, int nFeatures, const CvHidHaarFeature& feature)
 {
 	stringstream description;
 	description << "Stage: " << stage;
 	show(description.str(), featureIndex, nFeatures, feature);
 }
 
-void VisualCascade::show(string caption, int featureIndex, int nFeatures, CvHidHaarFeature& feature)
+void VisualCascade::show(string caption, int featureIndex, int nFeatures, const CvHidHaarFeature& feature)
 {
 	Mat result;
 	mProgress.copyTo(result);
@@ -109,6 +121,9 @@ void VisualCascade::show(string caption, int featureIndex, int nFeatures, CvHidH
 	stringstream description;
 	description << "Feature: " << featureIndex << " of " << nFeatures;
 	borderText(result, description.str(), Point(x, y + 12), CV_FONT_HERSHEY_PLAIN, 1, Scalar(0, 0, 255), Scalar(32, 32, 64));
+
+	recordImage(result);
+
 	imshow(mWindowName, result);
 	waitKey(1);
 }
@@ -126,7 +141,7 @@ void VisualCascade::borderText(Mat& image, string text, Point origin, int font, 
 	putText(image, text, origin, font, scale, colour);
 }
 
-void VisualCascade::drawFeature(cv::Mat image, CvHidHaarFeature& feature)
+void VisualCascade::drawFeature(cv::Mat image, const CvHidHaarFeature& feature)
 {
 	for (int rectIndex = 0; rectIndex < CV_HAAR_FEATURE_MAX; rectIndex++)
 	{
@@ -156,7 +171,7 @@ void VisualCascade::drawFeature(cv::Mat image, CvHidHaarFeature& feature)
 	}
 }
 
-Mat VisualCascade::getProgressImage()
+Mat VisualCascade::getProgressImage() const
 {
 	return mProgress;
 }
@@ -164,4 +179,33 @@ Mat VisualCascade::getProgressImage()
 void VisualCascade::keepWindow()
 {
 	rectangle(mProgress, mWindow, Scalar(0, 255, 0));
+}
+
+bool VisualCascade::isRecording() const
+{
+	return !mVideoPath.empty() || !mImagePath.empty();
+}
+
+void VisualCascade::recordImage(Mat image)
+{
+	if (!mImagePath.empty())
+	{
+		stringstream filename;
+		filename << mImagePath << "/CascadeFrame" << setfill('0') << setw(7) << mFrameCounter++ << ".png";
+		imwrite(filename.str(), image);
+	}
+	if (!mVideoPath.empty())
+	{
+		if (!mOutVideo.isOpened())
+		{
+			mOutVideo.open(mVideoPath, VideoWriter::fourcc('H', '2', '6', '4'), 30, image.size());
+			if (!mOutVideo.isOpened())
+			{
+				cerr << "Failed to create a video writer" << endl;
+				mVideoPath = string();
+				return;
+			}
+		}
+		mOutVideo << image;
+	}
 }

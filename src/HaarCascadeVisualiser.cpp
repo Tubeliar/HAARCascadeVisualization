@@ -23,6 +23,8 @@ static void help(const char * executableName)
                "   [--showscale=<image scale to do the visualisation at. This will not affect the detection>]\n"
                "   [--scalefactor=<Multiscale step. Bigger than 1. Bigger numbers cause a coarser but faster search>]\n"
                "   [--depth=<cascade depth to visualise. Deeper levels will still be performed but not shown>]\n"
+		       "   [--images=<folder name in which the individual frames will be written. The path must exist.>]\n"
+		       "   [--video=<file name for an avi video that will be created>]\n"
                "\n"
             "\tUsing OpenCV version " << CV_VERSION << "\n" << endl;
 }
@@ -54,6 +56,8 @@ int main( int argc, const char** argv )
 	double showScale = 1;
 	double factor = 1.3;
 	int depth = 4;
+	string outputPath;
+	string videoPath;
 
 	const char * argument = 0;
 	double doubleValue;
@@ -86,6 +90,16 @@ int main( int argc, const char** argv )
 			if (sscanf(argument, "%d", &intValue)) depth = intValue;
 			cout << "visualise cascade depth = " << depth << endl;
 		}
+		else if (findOpt(argv[i], "--images=", argument))
+		{
+			outputPath = argument;
+			cout << "write image series in " << outputPath << endl;
+		}
+		else if (findOpt(argv[i], "--video=", argument))
+		{
+			videoPath = argument;
+			cout << "write video " << videoPath << endl;
+		}
         else if( argv[i][0] == '-' )
         {
             cerr << "WARNING: Unknown option %s" << argv[i] << endl;
@@ -107,6 +121,9 @@ int main( int argc, const char** argv )
 		help(argv[0]);
 		return -1;
     }
+
+	if (!outputPath.empty()) cascade.setImagePath(outputPath);
+	if (!videoPath.empty()) cascade.setVideo(outputPath);
 
 	cout << "Detecting face(s) in " << inputName << endl;
     if( !image.empty() )
@@ -172,5 +189,13 @@ void detectAndDraw( UMat& img, VisualCascade& cascade, double detectScale, doubl
                        Point(cvRound((r->x + r->width-1)*scale), cvRound((r->y + r->height-1)*scale)),
                        color, 3, 8, 0);
     }
+	if (cascade.isRecording())
+	{
+		// Show the result for longer than one frame
+		for (int i = 0; i < 90; i++)
+		{
+			cascade.recordImage(canvas);
+		}
+	}
     imshow(VisualCascade::mWindowName, canvas );
 }
