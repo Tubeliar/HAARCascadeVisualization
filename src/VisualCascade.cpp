@@ -18,10 +18,12 @@ string VisualCascade::mWindowName = "Cascade Visualiser";
 
 void VisualCascade::detectMultiScale(InputArray showImage, InputArray _image, std::vector<Rect>& objects,
 	double showScale, int depth, double scaleFactor, int minNeighbors,
-	int flags, Size minObjectSize, Size maxObjectSize)
+	int flags, Size minObjectSize, Size maxObjectSize, unsigned steps)
 {
 	mShowScale = showScale;
 	mVisualisationDepth = depth;
+	mSteps = steps;
+	mStepCounter = 0;
 	std::vector<int> rejectLevels;
 	std::vector<double> levelWeights;
 	mProgress = showImage.getMat();
@@ -122,10 +124,13 @@ void VisualCascade::show(string caption, int featureIndex, int nFeatures, const 
 	description << "Feature: " << featureIndex << " of " << nFeatures;
 	borderText(result, description.str(), Point(x, y + 12), CV_FONT_HERSHEY_PLAIN, 1, Scalar(0, 0, 255), Scalar(32, 32, 64));
 
-	recordImage(result);
+	if (mSteps < 2 || mStepCounter++ % mSteps == 0)
+	{
+		recordImage(result);
 
-	imshow(mWindowName, result);
-	waitKey(1);
+		imshow(mWindowName, result);
+		waitKey(1);
+	}
 }
 
 void VisualCascade::borderText(Mat& image, string text, Point origin, int font, double scale, Scalar colour, Scalar borderColour)

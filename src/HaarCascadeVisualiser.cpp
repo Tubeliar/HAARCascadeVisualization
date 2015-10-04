@@ -23,13 +23,14 @@ static void help(const char * executableName)
                "   [--showscale=<image scale to do the visualisation at. This will not affect the detection>]\n"
                "   [--scalefactor=<Multiscale step. Bigger than 1. Bigger numbers cause a coarser but faster search>]\n"
                "   [--depth=<cascade depth to visualise. Deeper levels will still be performed but not shown>]\n"
+		       "   [--steps=<the number of steps to progress before showing another image>]\n"
 		       "   [--images=<folder name in which the individual frames will be written. The path must exist.>]\n"
 		       "   [--video=<file name for an avi video that will be created>]\n"
                "\n"
             "\tUsing OpenCV version " << CV_VERSION << "\n" << endl;
 }
 
-void detectAndDraw( UMat& img, VisualCascade& cascade, double detectScale, double showScale, double factor, int depth );
+void detectAndDraw( UMat& img, VisualCascade& cascade, double detectScale, double showScale, double factor, int depth, unsigned steps );
 
 string cascadeName = "../../data/haarcascades/haarcascade_frontalface_alt.xml";
 
@@ -55,7 +56,8 @@ int main( int argc, const char** argv )
 	double detectScale = 1;
 	double showScale = 1;
 	double factor = 1.3;
-	int depth = 4;
+	int depth = 0;
+	unsigned steps = 1;
 	string outputPath;
 	string videoPath;
 
@@ -89,6 +91,11 @@ int main( int argc, const char** argv )
 		{
 			if (sscanf(argument, "%d", &intValue)) depth = intValue;
 			cout << "visualise cascade depth = " << depth << endl;
+		}
+		else if (findOpt(argv[i], "--steps=", argument))
+		{
+			if (sscanf(argument, "%d", &intValue) && intValue > 0) steps = intValue;
+			cout << "visualise every " << steps << " steps " << endl;
 		}
 		else if (findOpt(argv[i], "--images=", argument))
 		{
@@ -128,14 +135,14 @@ int main( int argc, const char** argv )
 	cout << "Detecting face(s) in " << inputName << endl;
     if( !image.empty() )
     {
-        detectAndDraw( image, cascade, detectScale, showScale, factor, depth );
+        detectAndDraw( image, cascade, detectScale, showScale, factor, depth, steps );
         waitKey(0);
     }
 
     return 0;
 }
 
-void detectAndDraw( UMat& img, VisualCascade& cascade, double detectScale, double showScale, double factor , int depth)
+void detectAndDraw( UMat& img, VisualCascade& cascade, double detectScale, double showScale, double factor , int depth, unsigned steps)
 {
     int i = 0;
 	double scale = showScale / detectScale;
@@ -166,7 +173,7 @@ void detectAndDraw( UMat& img, VisualCascade& cascade, double detectScale, doubl
 		;
     cascade.detectMultiScale(visualisationImage, gray, faces,
         showScale / detectScale, depth, factor, minNeighbours, 
-        flags, Size(30, 30) );
+        flags, Size(30, 30), Size(), steps );
 	Mat canvas = cascade.getProgressImage();
 
     for( vector<Rect>::const_iterator r = faces.begin(); r != faces.end(); r++, i++ )

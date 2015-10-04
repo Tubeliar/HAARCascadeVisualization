@@ -17,7 +17,8 @@ public:
 		double scaleFactor = 1.1,
 		int minNeighbors = 3, int flags = 0,
 		cv::Size minSize = cv::Size(),
-		cv::Size maxSize = cv::Size());
+		cv::Size maxSize = cv::Size(),
+		unsigned steps = 1);
 
 	int getDepth() const;
 	void setIntegral(cv::Size integralSize, cv::Mat sum, cv::Mat sqsum);
@@ -49,6 +50,8 @@ protected:
 	std::string mVideoPath;
 	cv::VideoWriter mOutVideo;
 	unsigned mFrameCounter;
+	unsigned mSteps;
+	unsigned mStepCounter;
 };
 
 #endif
